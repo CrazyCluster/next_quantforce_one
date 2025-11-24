@@ -1,0 +1,17 @@
+{
+  "fitness": 16.396766364119273,
+  "params": {
+    "adx_threshold": 35.0,
+    "irg_threshold": 1.35,
+    "min_momentum_pct": 0.029,
+    "momentum_days": 4,
+    "volume_factor": 2.0,
+    "sl_mult": 3.2,
+    "tp_mult": 3.9000000000000004,
+    "allow_partial_signals": 0.0,
+    "require_macd": 0.0,
+    "require_ma50": 1.0,
+    "require_rsi_gt": 39.0
+  },
+  "trial_number": 72
+}
