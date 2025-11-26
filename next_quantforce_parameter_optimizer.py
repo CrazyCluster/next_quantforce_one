@@ -2,9 +2,36 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 from itertools import product
-from NASDAQ_100 import fetch_info
-import warnings, ta
+from bs4 import BeautifulSoup
+import warnings, ta, requests
 warnings.filterwarnings("ignore")
+
+def fetch_info():
+    try:
+        url = "https://en.wikipedia.org/wiki/Nasdaq-100"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:101.0) Gecko/20100101 Firefox/101.0',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+
+        #  Send GET request
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        #  Get the symbols table
+        tables = soup.find_all('table')
+
+        #  #  Convert table to dataframe
+        df = pd.read_html(str(tables))[4]
+
+        #  Rename symbol
+        df.rename(columns={"Ticker": "Symbol"}, inplace=True)
+
+        return df['Symbol'].to_list()
+    except Exception as e:
+        print('Error loading data: ', e)
+        return None
 
 
 def compute_indicators_ta(df: pd.DataFrame) -> pd.DataFrame:

@@ -1,66 +1,43 @@
-
-"""
-bayes_param_optimizer.py
-
-Bayesian parameter optimizer using Optuna + multiprocessing for multi-symbol evaluation.
-
-- Imports your strategy module `strategy_tuneable` (compute_indicators_ta, apply_strategy_tuneable).
-- Optimizes tunable parameters using Optuna (TPE sampler).
-- Evaluates each candidate across a list of symbols in parallel (multiprocessing).
-- Saves best params (JSON) and a CSV of trial results.
-
-Usage:
-    python bayes_param_optimizer.py --symbols AAPL MSFT NVDA AMZN --trials 120 --workers 6
-
-Tune the defaults as you wish.
-"""
-import os, time
-import requests
-import argparse
+# monte_carlo_opt_integration.py
+import os
+import time
 import json
 import math
-from functools import partial
-from multiprocessing import Pool
-from typing import Dict, List
+import requests
+import multiprocessing
 from bs4 import BeautifulSoup
+from typing import List, Dict, Tuple
+import argparse
 import numpy as np
-import optuna, ta
 import pandas as pd
 import yfinance as yf
+import optuna, ta
 
-# pip install pyarrow
+# -------------------------
+# CACHE (parquet) for price data
+# -------------------------
 CACHE_DIR = "cache_prices"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-def load_price_data_cached(symbol, period="3y", interval="1d", max_age_hours=24):
-    """
-    Load OHLCV data for `symbol` using a local cache.
-    Avoids repeated downloads during Optuna optimization.
-    """
+def load_price_data_cached(symbol: str, period: str = "2y", interval: str = "1d", max_age_hours: int = 24):
     cache_file = os.path.join(CACHE_DIR, f"{symbol}_{period}_{interval}.parquet")
-
-    # 1) Cache existiert → prüfen ob zu alt
+    # cache hit
     if os.path.exists(cache_file):
-        age_hours = (time.time() - os.path.getmtime(cache_file)) / 3600.0
-        if age_hours <= max_age_hours:
+        age_h = (time.time() - os.path.getmtime(cache_file)) / 3600.0
+        if age_h <= max_age_hours:
             try:
                 return pd.read_parquet(cache_file)
             except Exception:
-                print(f"[WARN] Cache damaged for {symbol}, redownloading…")
-
-    # 2) Download (einmalig)
-    print(f"[CACHE MISS] downloading {symbol} …")
-    df = yf.download(symbol, period=period, interval=interval, auto_adjust=True, progress=False)
-
-    if df.empty:
-        print(f"[WARN] No data for {symbol}.")
-        return df
-
-    # 3) Cache speichern
-    df.to_parquet(cache_file)
-
+                pass
+    # download and save
+    df = yf.download(symbol, period=period, interval=interval, progress=False)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    try:
+        df.to_parquet(cache_file)
+    except Exception as e:
+        print("[WARN] Could not save parquet:", e)
     return df
-
 
 def fetch_info():
     try:
@@ -268,18 +245,67 @@ def apply_strategy(df: pd.DataFrame,
 
     return df
 
-# ---------------------------
-# Helper: evaluate one symbol with given params
-# ---------------------------
-def evaluate_symbol(symbol: str, params: Dict, period: str = "2y") -> Dict:
-    """Download data and evaluate apply_strategy_tuneable for one symbol.
-    Returns metrics dict: sharpe, max_drawdown, trades, total_return.
+# -------------------------
+# backtest helper returns trade-return list and metrics
+# -------------------------
+def backtest_symbol_from_df(df: pd.DataFrame, params: Dict) -> Dict:
     """
+    Apply strategy to df (with indicators) and extract completed trade returns.
+    Returns:
+      { "symbol": str(optional),
+        "trade_returns": List[float],
+        "trades": int,
+        "total_return": float,
+        "sharpe": float,
+        "win_rate": float,
+        "max_drawdown": float }
+    """
+    if df is None or df.empty:
+        return {"trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
+
+    # ensure indicators
+    required = ["ATR","MA20","MA50","ADX","IRG","Vol20","MACD","MACD_signal","RSI","High_20"]
+    if not all(c in df.columns for c in required):
+        df = compute_indicators_ta(df)
+
+    df_res = apply_strategy(df.copy(), **params)
+    # collect trades: match buy -> next sell
+    trade_returns = []
+    in_pos = False
+    entry = None
+    for idx, r in df_res.iterrows():
+        if (not in_pos) and r.get("Buy", False):
+            in_pos = True
+            entry = float(r["Close"])
+        elif in_pos and r.get("Sell", False):
+            exitp = float(r["Close"])
+            if entry and entry > 0:
+                trade_returns.append((exitp / entry) - 1.0)
+            in_pos = False
+            entry = None
+    trades = len(trade_returns)
+    if trades == 0:
+        return {"trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
+    arr = np.array(trade_returns)
+    total_return = float(np.prod(1 + arr) - 1.0)
+    win_rate = float((arr > 0).sum() / len(arr))
+    sharpe = float((arr.mean() / arr.std()) * math.sqrt(252)) if arr.std() > 0 else 0.0
+    # compute equity sequence for drawdown
+    eq = np.cumprod(1 + arr)
+    peak = np.maximum.accumulate(eq)
+    dd = (peak - eq) / peak
+    max_dd = float(np.max(dd)) if len(dd)>0 else 0.0
+    return {"trade_returns": trade_returns, "trades": trades, "total_return": total_return, "sharpe": sharpe, "win_rate": win_rate, "max_drawdown": max_dd}
+
+# -------------------------
+# multiprocessing top-level worker (picklable)
+# -------------------------
+def _eval_symbol_task(args: Tuple[str, Dict, str]):
+    symbol, params, period = args
     try:
-        #df = yf.download(symbol, period=period, auto_adjust=True, progress=False)  # Läde bei jeder Iteration die Daten herunter
-        df = load_price_data_cached(symbol, period=period, max_age_hours=24)    # Benutzt eine Cache zu zwischenspeichern
-        if df.empty:
-            return {"sharpe": 0.0, "max_drawdown": 0.0, "trades": 0, "total_return": 0.0, "win_rate": 0.0}
+        df = load_price_data_cached(symbol, period=period)
+        if df is None or df.empty:
+            return {"symbol": symbol, "trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
 
         if isinstance(df.columns, pd.MultiIndex):
             try:
@@ -289,129 +315,161 @@ def evaluate_symbol(symbol: str, params: Dict, period: str = "2y") -> Dict:
             except Exception:
                 df.columns = [str(c) for c in df.columns]
 
-        # ensure indicators
-        df = compute_indicators_ta(df)
-
-        # convert boolean-like params
-        params_local = params.copy()
-        if "allow_partial_signals" in params_local:
-            params_local["allow_partial_signals"] = bool(round(params_local["allow_partial_signals"]))
-        if "require_macd" in params_local:
-            params_local["require_macd"] = bool(round(params_local["require_macd"]))
-        if "require_ma50" in params_local:
-            params_local["require_ma50"] = bool(round(params_local["require_ma50"]))
-
-        df_res = apply_strategy(df, **params_local)
-
-        # build trade returns
-        returns = []
-        in_pos = False
-        entry = None
-        wins = 0
-        for _, r in df_res.iterrows():
-            if (not in_pos) and r.get("Buy", False):
-                in_pos = True
-                entry = float(r["Close"])
-            elif in_pos and r.get("Sell", False):
-                exitp = float(r["Close"])
-                if entry and entry > 0:
-                    ret = (exitp / entry) - 1.0
-                    returns.append(ret)
-                    if ret > 0:
-                        wins += 1
-                in_pos = False
-                entry = None
-
-        if len(returns) == 0:
-            return {"sharpe": 0.0, "max_drawdown": 0.0, "trades": 0, "total_return": 0.0, "win_rate": 0.0}
-
-        arr = np.array(returns)
-        total_return = float(np.prod(1 + arr) - 1)
-        if arr.std() > 0:
-            sharpe = float((arr.mean() / arr.std()) * math.sqrt(252))
-        else:
-            sharpe = 0.0
-
-        equity = np.cumprod(1 + arr)
-        peak = np.maximum.accumulate(equity)
-        dd = (equity - peak) / peak
-        max_dd = float(abs(dd.min())) if len(dd) > 0 else 0.0
-        win_rate = float(wins / len(returns))
-
-        return {"sharpe": sharpe, "max_drawdown": max_dd, "trades": len(arr), "total_return": total_return, "win_rate": win_rate}
-
+        result = backtest_symbol_from_df(df, params)
+        result["symbol"] = symbol
+        return result
     except Exception:
-        # safe fallback
-        return {"sharpe": 0.0, "max_drawdown": 0.0, "trades": 0, "total_return": 0.0, "win_rate": 0.0}
+        return {"symbol": symbol, "trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
 
+# -------------------------
+# Monte-Carlo simulation and score (uses trade-returns)
+# -------------------------
+def monte_carlo_from_trade_returns(trade_returns: List[float], n_sim: int = 2000, noise_std: float = 0.02):
+    """
+    Build MC equity curves by resampling trade_returns with replacement.
+    Adds small gaussian noise proportional to std(trade_returns).
+    Returns numpy array shape (n_sim, len(trade_returns)+1) of equity curves starting at 1.0
+    """
+    if not trade_returns or len(trade_returns) < 5:
+        return None
+    arr = np.array(trade_returns)
+    base_std = arr.std() if arr.std() > 0 else 1e-6
+    sims = []
+    m = len(arr)
+    for _ in range(n_sim):
+        sampled = np.random.choice(arr, size=m, replace=True)
+        noise = np.random.normal(0, noise_std * base_std, size=m)
+        sampled = sampled + noise
+        eq = np.empty(m+1, dtype=float)
+        eq[0] = 1.0
+        for i, r in enumerate(sampled, start=1):
+            eq[i] = eq[i-1] * (1.0 + r)
+        sims.append(eq)
+    return np.array(sims)
 
-# ---------------------------
-# Objective aggregator (multi-symbol)
-# ---------------------------
-def evaluate_params_on_universe(symbols: List[str], params: Dict, period: str, workers: int = 4, min_trades_required: int = 3) -> Dict:
-    """Evaluate params across symbols in parallel, aggregate metrics and compute a scalar fitness."""
-    if workers is None or workers <= 1:
-        results = [evaluate_symbol(s, params, period=period) for s in symbols]
+def compute_monte_carlo_score(mc_curves: np.ndarray):
+    """
+    Compute robust score from MC curves.
+    Returns a float (higher = better robustness).
+    """
+    if mc_curves is None or len(mc_curves) == 0:
+        return -1.0
+    finals = mc_curves[:, -1]
+    # compute drawdowns for each curve
+    maxdds = []
+    for curve in mc_curves:
+        peak = curve[0]
+        maxdd = 0.0
+        for v in curve:
+            peak = max(peak, v)
+            dd = (peak - v) / peak
+            if dd > maxdd:
+                maxdd = dd
+        maxdds.append(maxdd)
+    finals = np.array(finals)
+    maxdds = np.array(maxdds)
+    median_ret = np.median(finals) - 1.0  # convert from factor to return
+    worst5_ret = np.percentile(finals, 5) - 1.0
+    median_dd = np.median(maxdds)
+    worst95_dd = np.percentile(maxdds, 95)
+    prob_loss = (finals < 1.0).mean()
+    # Score: reward median ret, reward worst5 ret, penalize median/worst dd and probability of loss
+    score = (1.0 * median_ret) + (0.6 * worst5_ret) - (1.0 * median_dd) - (1.5 * worst95_dd) - (1.0 * prob_loss)
+    return float(score)
+
+# -------------------------
+# Core evaluate_params_on_universe with MC integrated
+# -------------------------
+def evaluate_params_on_universe_with_mc(symbols: List[str], params: Dict, period: str = "2y", workers: int = 1, min_trades_required: int = 1, verbose: bool = False):
+    """
+    Evaluate params across the symbol list, gather trade returns, compute aggregated metrics,
+    run Monte-Carlo on combined trade-returns and return aggregated metrics + mc_score.
+    """
+    if not symbols:
+        return {"fitness": -10.0, "trades": 0}
+
+    tasks = [(s, params, period) for s in symbols]
+
+    # parallel map
+    if workers and workers > 1:
+        try:
+            with multiprocessing.Pool(processes=workers) as pool:
+                results = pool.map(_eval_symbol_task, tasks)
+        except Exception as e:
+            if verbose:
+                print("[WARN] multiprocessing failed:", e, "falling back to sequential")
+            results = list(map(_eval_symbol_task, tasks))
     else:
-        with Pool(processes=workers) as pool:
-            fn = partial(evaluate_symbol, params=params, period=period)
-            results = pool.map(fn, symbols)
+        results = list(map(_eval_symbol_task, tasks))
 
-    # aggregate
-    sharpe_mean = float(np.mean([r["sharpe"] for r in results]))
-    maxdd_mean = float(np.mean([r["max_drawdown"] for r in results]))
-    trades_total = int(np.sum([r["trades"] for r in results]))
-    total_return_mean = float(np.mean([r["total_return"] for r in results]))
+    # collect all trade returns across symbols
+    all_trade_returns = []
+    per_symbol_metrics = []
+    trades_total = 0
+    for r in results:
+        tr = r.get("trade_returns", [])
+        trades_total += len(tr)
+        if tr:
+            all_trade_returns.extend(tr)
+        per_symbol_metrics.append(r)
 
-    # new fitness funktion
-    win_rate_mean = float(np.mean([r["win_rate"] for r in results]))
-    if trades_total < max(1, min_trades_required):
-        return {"fitness": -999.0, "trades": trades_total, "total_return_mean": 0.0, "sharpe_mean": 0.0, "max_drawdown_mean": 0.0}
+    if trades_total == 0:
+        if verbose:
+            print("[INFO] No completed trades for params on universe.")
+        return {"fitness": -1.0, "trades": 0, "mc_score": -1.0}
 
-    fitness = (1.0 * total_return_mean) + (0.8 * sharpe_mean) + (0.5 * win_rate_mean) - (0.6 * maxdd_mean)
+    # aggregated metrics from symbols which had trades
+    valid = [r for r in per_symbol_metrics if r.get("trades", 0) > 0]
+    total_return_mean = float(np.mean([r["total_return"] for r in valid]))
+    sharpe_mean = float(np.mean([r["sharpe"] for r in valid]))
+    win_rate_mean = float(np.mean([r["win_rate"] for r in valid]))
+    maxdd_mean = float(np.mean([r["max_drawdown"] for r in valid]))
+
+    # Monte-Carlo on combined trade returns (resample trades)
+    mc_curves = monte_carlo_from_trade_returns(all_trade_returns, n_sim=2000, noise_std=0.02)
+    mc_score = compute_monte_carlo_score(mc_curves)
+
+    # final fitness: include mc_score (scaled)
+    fitness = (
+        1.0 * total_return_mean +
+        0.8 * sharpe_mean +
+        0.5 * win_rate_mean -
+        0.6 * maxdd_mean +
+        1.2 * mc_score
+    )
+
+    if verbose:
+        print(f"[EVAL] trades_total={trades_total} ret_mean={total_return_mean:.4f} sharpe={sharpe_mean:.3f} winrate={win_rate_mean:.3f} maxdd={maxdd_mean:.3f} mc_score={mc_score:.4f} fitness={fitness:.4f}")
 
     return {
         "fitness": float(fitness),
-        "trades": trades_total,
+        "trades": int(trades_total),
         "total_return_mean": total_return_mean,
         "sharpe_mean": sharpe_mean,
         "win_rate_mean": win_rate_mean,
-        "max_drawdown_mean": maxdd_mean
-    }
-
-
-    """ alte fitness funktion
-    # fitness function: maximize sharpe, penalize drawdown, penalize too-few-trades
-    # tune these weights as needed
-    trade_penalty = 0.1 if trades_total < max(1, len(symbols)) else 0.0
-    fitness = sharpe_mean - maxdd_mean - trade_penalty
-
-    return {
-        "fitness": float(fitness),
-        "sharpe_mean": sharpe_mean,
         "max_drawdown_mean": maxdd_mean,
-        "trades": trades_total,
-        "total_return_mean": total_return_mean
+        "mc_score": mc_score,
+        "per_symbol": per_symbol_metrics
     }
-    """
+
 
 # ---------------------------
 # Optuna objective
 # ---------------------------
 def make_objective(symbols: List[str], period: str, workers: int, min_trades_required: int):
     def objective(trial: optuna.Trial):
-        # Define parameter search space
-        adx_threshold = trial.suggest_int("adx_threshold", 12, 30)
-        irg_threshold = trial.suggest_float("irg_threshold", 0.3, 1.60, step=0.05)
-        min_momentum_pct = trial.suggest_float("min_momentum_pct", 0.005, 0.03, step=0.001)
+        adx_threshold = trial.suggest_int("adx_threshold", 10, 30)
+        irg_threshold = trial.suggest_float("irg_threshold", 0.10, 1.60, step=0.05)
+        min_momentum_pct = trial.suggest_float("min_momentum_pct", 0.002, 0.03, step=0.001)
         momentum_days = trial.suggest_int("momentum_days", 3, 10)
-        volume_factor = trial.suggest_float("volume_factor", 1.0, 1.6, step=0.05)
+        volume_factor = trial.suggest_float("volume_factor", 0.8, 1.6, step=0.05)
         sl_mult = trial.suggest_float("sl_mult", 1.0, 3.0, step=0.1)
         tp_mult = trial.suggest_float("tp_mult", 1.5, 6.0, step=0.1)
         allow_partial_signals = trial.suggest_categorical("allow_partial_signals", [0, 1])
         require_macd = trial.suggest_categorical("require_macd", [0, 1])
         require_ma50 = trial.suggest_categorical("require_ma50", [0, 1])
         require_rsi_gt = trial.suggest_int("require_rsi_gt", 10, 50)
+
 
         params = {
             "adx_threshold": float(adx_threshold),
@@ -421,24 +479,16 @@ def make_objective(symbols: List[str], period: str, workers: int, min_trades_req
             "volume_factor": float(volume_factor),
             "sl_mult": float(sl_mult),
             "tp_mult": float(tp_mult),
-            "allow_partial_signals": float(allow_partial_signals),
-            "require_macd": float(require_macd),
-            "require_ma50": float(require_ma50),
-            "require_rsi_gt": float(require_rsi_gt),
+            "allow_partial_signals": int(allow_partial_signals),
+            "require_macd": int(require_macd),
+            "require_ma50": int(require_ma50),
+            "require_rsi_gt": int(require_rsi_gt),
         }
-
         # evaluate across universe
-        agg = evaluate_params_on_universe(symbols, params, period=period, workers=workers, min_trades_required=min_trades_required)
-
-        # Optuna maximizes objective by using return value; return fitness
-        trial.set_user_attr("sharpe_mean", agg["sharpe_mean"])
-        trial.set_user_attr("max_drawdown_mean", agg["max_drawdown_mean"])
-        trial.set_user_attr("trades", agg["trades"])
-        trial.set_user_attr("total_return_mean", agg["total_return_mean"])
+        agg = evaluate_params_on_universe_with_mc(symbols, params, period=period, workers=workers, min_trades_required=min_trades_required)
+        trial.set_user_attr("agg", agg)
         trial.set_user_attr("params", params)
-
-        # You can also ask Optuna to prune based on some intermediate result (not done here)
-        return agg["fitness"]
+        return float(agg.get("fitness", -10.0))
 
     return objective
 
@@ -447,40 +497,34 @@ def make_objective(symbols: List[str], period: str, workers: int, min_trades_req
 # Runner
 # ---------------------------
 def run_optimize(symbols: List[str], n_trials: int = 100, period: str = "2y", workers: int = 4, study_name: str = None, min_trades_required: int = 3):
+
     sampler = optuna.samplers.TPESampler(seed=42)
-
-    study = optuna.create_study(direction="maximize", sampler=sampler, study_name=study_name)
-
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=0, interval_steps=1)
+    study = optuna.create_study(direction="maximize", sampler=sampler, pruner=pruner, study_name=None, storage=None, load_if_exists=True)
     objective = make_objective(symbols, period, workers, min_trades_required)
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
-    # collect best
-    best_trial = study.best_trial
-    best_params = best_trial.user_attrs.get("params", None)
-    if not best_params:
-        # fallback: reconstruct from trial params
-        best_params = {k: v for k, v in best_trial.params.items()}
+    best = study.best_trial
+    best_agg = best.user_attrs.get("agg", {})
+    best_params = best.user_attrs.get("params", best.params)
 
-    # write outputs
-    out_json = "optuna_best_parameters.json"
+    out_json = "optuna_best_parameters_fixed_mc.json"
     with open(out_json, "w") as fh:
-        json.dump({"fitness": best_trial.value, "params": best_params, "trial_number": best_trial.number}, fh, indent=2)
+        json.dump({"fitness": best.value, "params": best_params, "agg": best_agg, "trial_number": best.number}, fh, indent=2)
 
-    # write trials to CSV
     rows = []
     for t in study.trials:
         row = {"trial_number": t.number, "value": t.value}
         row.update(t.params)
-        row.update(t.user_attrs)
+        agg = t.user_attrs.get("agg", {})
+        row.update({"trades": agg.get("trades", None), "sharpe_mean": agg.get("sharpe_mean", None), "total_return_mean": agg.get("total_return_mean", None), "max_drawdown_mean": agg.get("max_drawdown_mean", None), "mc_score": agg.get("mc_score", None)})
         rows.append(row)
     df = pd.DataFrame(rows)
-    out_csv = "optuna_trials.csv"
+    out_csv = "optuna_trials_fixed_mc.csv"
     df.to_csv(out_csv, index=False)
 
-    print(f"Best fitness: {best_trial.value}")
-    print(f"Best params saved to {out_json}")
-    print(f"Trials saved to {out_csv}")
-    return study, best_trial, out_json, out_csv
+    print(f"[DONE] Best fitness: {best.value}, saved: {out_json}, trials: {out_csv}")
+    return study, best, out_json, out_csv
 
 
 # ---------------------------

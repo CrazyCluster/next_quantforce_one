@@ -1,17 +1,17 @@
 {
-  "fitness": 16.396766364119273,
+  "fitness": 8.063064356071003,
   "params": {
-    "adx_threshold": 35.0,
-    "irg_threshold": 1.35,
-    "min_momentum_pct": 0.029,
-    "momentum_days": 4,
-    "volume_factor": 2.0,
-    "sl_mult": 3.2,
-    "tp_mult": 3.9000000000000004,
+    "adx_threshold": 14.0,
+    "irg_threshold": 0.65,
+    "min_momentum_pct": 0.012,
+    "momentum_days": 3,
+    "volume_factor": 1.55,
+    "sl_mult": 2.5,
+    "tp_mult": 1.6,
     "allow_partial_signals": 0.0,
-    "require_macd": 0.0,
+    "require_macd": 1.0,
     "require_ma50": 1.0,
-    "require_rsi_gt": 39.0
+    "require_rsi_gt": 50.0
   },
   "trial_number": 72
 }

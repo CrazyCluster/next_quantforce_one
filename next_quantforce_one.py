@@ -24,6 +24,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import ta
+from next_parameter_optimizer_one import compute_indicators_ta, apply_strategy
 
 # Alpaca
 try:
@@ -61,10 +62,12 @@ IRG_THRESHOLD = 1.0
 MIN_WEIGHT = 0.01
 
 # Allocation / ordering
-TOTAL_CAPITAL = 10000.0      # capital to allocate (paper account)
-ALLOW_FRACTIONAL = True      # if your broker supports fractional shares
+MINIMAL_CAPITAL_ACCOUNT = 500.00
 MIN_CAPITAL_PER_TRADE = 50.0
-MAX_ORDERS_PER_DAY = 10      # limit number of new buys per run
+MAX_ORDERS_ACCOUNT = 7     # limit number of new buys per run
+ALLOW_FRACTIONAL = False      # if your broker supports fractional shares
+
+
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -106,7 +109,7 @@ def load_optuna_parameters(path="optuna_best_parameters.json"):
     """
     if not os.path.exists(path):
         print(f"[WARN] {path} nicht gefunden — verwende Default-Parameter.")
-        return DEFAULT_PARAMS
+        return None
 
     try:
         with open(path, "r") as f:
@@ -116,7 +119,8 @@ def load_optuna_parameters(path="optuna_best_parameters.json"):
         # { "best_params": { ... }, "best_value": ... }
         if "params" in data:
             return data["params"]
-
+        else:
+            return None
 
     except Exception as e:
         print(f"[WARN] Fehler beim Laden von {path}: {e}")
@@ -260,17 +264,6 @@ def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df = compute_indicators(df)
 
-    data = load_optuna_parameters()
-
-    if data:
-        MOMENTUM_DAYS = data["momentum_days"]
-        VOLUME_FACTOR = data["volume_factor"]
-        IRG_THRESHOLD = data["irg_threshold"]
-        ADX_THRESHOLD = data["adx_threshold"]
-        MOMENTUM_PCT = data["min_momentum_pct"]
-        SL_MULT = data["sl_mult"]
-        TP_MULT = data["tp_mult"]
-
     # Prepare result rows: we'll only keep rows where Buy or Sell happens
     df["Buy"] = False
     df["Sell"] = False
@@ -377,7 +370,7 @@ def compute_strength_score(signals_df: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------------------------------------
 # 6) Capital allocation
 # -----------------------------------------------------------
-def allocate_capital(buys_df: pd.DataFrame, total_capital: float = TOTAL_CAPITAL,
+def allocate_capital(buys_df: pd.DataFrame, total_capital: float = 0.00,
                      min_weight: float = MIN_WEIGHT, allow_fractional: bool = ALLOW_FRACTIONAL,
                      min_capital_per_trade: float = MIN_CAPITAL_PER_TRADE, debug: bool = False) -> pd.DataFrame:
     if buys_df is None or buys_df.empty:
@@ -411,10 +404,13 @@ def allocate_capital(buys_df: pd.DataFrame, total_capital: float = TOTAL_CAPITAL
 
     capital_alloc = weights * total_capital
     allocation = pd.DataFrame({
+        "Date": df_latest["Date"],
         "Strength_Score": scores,
         "Weight": weights,
         "Capital": capital_alloc,
-        "Price": df_latest["Close"]
+        "Price": df_latest["Close"],
+        "Take_Profit": df_latest["Take_Profit"].fillna(0).astype(float),
+        "Stop_Loss": df_latest["Stop_Loss"].fillna(0).astype(float)
     })
 
     # drop nan prices
@@ -459,6 +455,14 @@ class AlpacaClient:
         self.api = tradeapi.REST(api_key, secret_key, base_url=base_url, api_version='v2')
 
 
+    def get_account_cash(self):
+        try:
+            account = self.api.get_account()
+            return round(float(account.cash), 2)
+        except Exception:
+            logger.exception("Failed to fetch positions")
+            return 0.00
+
     def get_positions(self) -> Dict[str, float]:
         try:
             positions = self.api.list_positions()
@@ -467,13 +471,11 @@ class AlpacaClient:
             logger.exception("Failed to fetch positions")
             return {}
 
-
     def get_open_orders(self):
         try:
             return self.api.list_orders(status="open")
         except Exception:
             return []
-
 
     def submit_buy(self, symbol: str, qty: float, side="buy", time_in_force="day", type="market"):
         try:
@@ -489,6 +491,19 @@ class AlpacaClient:
             logger.exception(f"Order failed for {symbol} qty {qty}")
             return None
 
+    def submit_buy_tp_sl(self, symbol: str, qty: float, tp_price: float, sl_price: float, side="buy", time_in_force="day", type="market", order_class="bracket"):
+        try:
+            if qty <= 0:
+                logger.debug(f"Not placing order for {symbol} qty {qty}")
+                return None
+            if isinstance(qty, float) and not ALLOW_FRACTIONAL:
+                qty = int(qty)
+            order = self.api.submit_order(symbol=symbol, qty=qty, side=side, type=type, time_in_force=time_in_force, order_class=order_class, take_profit={"limit_price": tp_price}, stop_loss={'stop_price': sl_price})
+            logger.info(f"Placed order {order.id} {symbol} {qty}")
+            return order
+        except Exception:
+            logger.exception(f"Order failed for {symbol} qty {qty}")
+            return None
 
     def submit_sell(self, symbol: str, qty: float, side="sell", time_in_force="day", type="market"):
         try:
@@ -508,17 +523,22 @@ class AlpacaClient:
 # Main runner with Buy + Sell
 # ---------------------------
 
-def run_daily(cash_to_allocate: float = TOTAL_CAPITAL):
+def run_daily(load_paramaters = True):
+    paramters = None
     symbols = fetch_symbols()
     logger.info(f"Loaded {len(symbols)} symbols")
-
     data_map = download_batch(symbols, period=DATA_PERIOD, interval=DATA_INTERVAL, auto_adjust=AUTO_ADJUST)
     logger.info(f"Downloaded data for {len(data_map)} symbols")
-
+    if load_paramaters:
+        paramters = load_optuna_parameters()
     all_signals = []
     for sym, df in data_map.items():
         try:
-            signals = generate_signals(df)
+            if paramters:
+                df = apply_strategy(df, **paramters)
+                signals = df[(df["Buy"] == True) | (df["Sell"] == True)].copy()
+            else:
+                signals = generate_signals(df)
             if not signals.empty:
                 signals["Symbol"] = sym
                 all_signals.append(signals)
@@ -535,27 +555,14 @@ def run_daily(cash_to_allocate: float = TOTAL_CAPITAL):
 
     # SELL side: find held positions that have Sell signal
     sell_candidates = latest_per_symbol[latest_per_symbol["Sell"] == True].copy()
-
+    logger.info("-----Selling Candidates-----")
+    display_cols = ["Date", "Symbol", "Close"]
+    logger.info(sell_candidates[display_cols].to_string(index=False))
     # BUY side: latest rows that are Buy
     candidate_buys = latest_per_symbol[latest_per_symbol["Buy"] == True].copy()
-
-    # Score and allocation for buys
-    if candidate_buys.empty:
-        logger.info("No candidate buys today")
-    else:
-        scored = compute_strength_score(candidate_buys)
-        if not scored.empty:
-            scored_sorted = scored.sort_values("Strength_Score", ascending=False)
-            top = scored_sorted.head(MAX_ORDERS_PER_DAY)
-            allocation = allocate_capital(top, total_capital=cash_to_allocate, min_weight=MIN_WEIGHT, allow_fractional=ALLOW_FRACTIONAL, min_capital_per_trade=MIN_CAPITAL_PER_TRADE, debug=True)
-            if allocation.empty:
-                logger.info("Allocation returned empty")
-            else:
-                logger.info("Planned allocation:")
-                logger.info(allocation.to_string(index=False))
-        else:
-            allocation = pd.DataFrame()
-            logger.info("No scored buys")
+    logger.info("-----Buying Candidates-----")
+    display_cols = ["Date", "Symbol", "Close"]
+    logger.info(candidate_buys[display_cols].to_string(index=False))
 
     # Real trading: require Alpaca keys
     if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
@@ -586,6 +593,32 @@ def run_daily(cash_to_allocate: float = TOTAL_CAPITAL):
     else:
         logger.info("No sell signals to execute.")
 
+    account_cash = client.get_account_cash()
+    positions = client.get_positions()
+
+    # Score and allocation for buys
+    if candidate_buys.empty:
+        logger.info("No candidate buys today")
+    elif (account_cash - MINIMAL_CAPITAL_ACCOUNT) <= 0:
+        logger.info("No cash for buys today")
+    else:
+        scored = compute_strength_score(candidate_buys)
+        if not scored.empty:
+            scored_sorted = scored.sort_values("Strength_Score", ascending=False)
+            no_orders = min(MAX_ORDERS_ACCOUNT - len(positions), len(scored_sorted))
+            top = scored_sorted.head(no_orders)
+            allocation = allocate_capital(top, total_capital=account_cash, min_weight=MIN_WEIGHT, allow_fractional=ALLOW_FRACTIONAL, min_capital_per_trade=MIN_CAPITAL_PER_TRADE, debug=True)
+            if allocation.empty:
+                logger.info("Allocation returned empty")
+            else:
+                logger.info("Planned allocation:")
+                display_cols = ["Date", "Shares", "Symbol", "Price", "Weight", "Capital"]
+                logger.info(allocation[display_cols].to_string(index=False))
+        else:
+            allocation = pd.DataFrame()
+            logger.info("No scored buys")
+
+
 # BUY execution: place new buys for allocation if not already owned and no open orders
     positions = client.get_positions()
     open_orders = client.get_open_orders()
@@ -601,7 +634,12 @@ def run_daily(cash_to_allocate: float = TOTAL_CAPITAL):
                 logger.info(f"Open order exists for {sym}, skipping buy")
                 continue
             logger.info(f"Placing BUY market for {sym} qty {shares}")
-            order = client.submit_buy(sym, shares)
+            tp_price  = getattr(row, "Take_Profit", False)
+            sl_price = getattr(row, "Stop_Loss", False)
+            if all([tp_price, sl_price]):
+                order = client.submit_buy_tp_sl(sym, shares, round(tp_price, 2), round(sl_price, 2))
+            else:
+                order = client.submit_buy(sym, shares)
             if order:
                 orders_placed.append((sym, shares, getattr(order, 'id', None)))
             time.sleep(0.25)
@@ -613,16 +651,5 @@ def run_daily(cash_to_allocate: float = TOTAL_CAPITAL):
 # Run
 # ---------------------------
 if __name__ == "__main__":
-    res = run_daily(cash_to_allocate=TOTAL_CAPITAL)
-    if res is None:
-        print("No actions")
-    else:
-        if isinstance(res, dict):
-            if 'allocation' in res:
-                print("Planned buys:")
-                print(res['allocation'].to_string(index=False))
-            if 'sells' in res:
-                print("Planned sells (latest sell signals):")
-                print(res['sells'].to_string(index=False))
-            else:
-                print(res)
+    res = run_daily(load_paramaters=True)
+    logger.info(res)
