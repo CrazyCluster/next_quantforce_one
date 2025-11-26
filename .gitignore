@@ -7,3 +7,4 @@ filter_nasq_100_old.py
 next_quantforce.py
 nasdaq100_signals_new.csv
 NASDAQ_100.py
+cache_prices
