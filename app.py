@@ -53,7 +53,7 @@ def run_daily_trigger():
             "error": str(e)
         }), 500
 
-@app.route("/run_weeky", methods=["POST"])
+@app.route("/run_weekly", methods=["POST"])
 def run_weekly_trigger():
     logging.info("⚙️  Received weekly run trigger...")
     nasdaq_symbols = fetch_info()
@@ -69,12 +69,12 @@ def run_weekly_trigger():
     args = p.parse_args()
 
     try:
-        run_optimize(symbols=args.symbols, n_trials=args.trials, period=args.period, workers=args.workers, storage=args.storage, min_trades_required=args.min_trades, n_mc=args.n_mc, verbose=args.verbose)
+        study, best, out_json, out_csv = run_optimize(symbols=args.symbols, n_trials=args.trials, period=args.period, workers=args.workers, storage=args.storage, min_trades_required=args.min_trades, n_mc=args.n_mc, verbose=args.verbose)
         logging.info("✅ Weekly task completed successfully")
         return jsonify({
             "success": True,
             "message": "Weekly trading routine executed successfully.",
-            "result": True
+            "result": best
         }), 200
 
     except Exception as e:
