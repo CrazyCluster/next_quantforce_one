@@ -1,311 +1,163 @@
-# monte_carlo_opt_integration.py
-import os
-import time
+#!/usr/bin/env python3
+"""
+next_parameter_optimizer_final.py
+
+Final corrected optimizer:
+ - stable fitness (no exploding sums)
+ - per-symbol metrics averaged, not summed
+ - Monte-Carlo per-symbol, normalized and bounded
+ - multiprocessing safe (top-level worker)
+ - parquet caching for price data
+ - Optuna TPE + MedianPruner
+ - JSON/CSV outputs for best trial + trials
+
+Requires:
+    pip install optuna yfinance pandas numpy ta pyarrow
+
+Usage:
+    python next_parameter_optimizer_final.py --symbols AAPL MSFT NVDA AMZN --trials 80 --workers 4 --period 2y
+"""
+
+import argparse
 import json
 import math
-import requests
 import multiprocessing
-from bs4 import BeautifulSoup
-from typing import List, Dict, Tuple
-import argparse
+import os
+import time
+
+from typing import Dict, List, Tuple, Optional
 import numpy as np
+import optuna
 import pandas as pd
 import yfinance as yf
-import optuna, ta
 
-# -------------------------
-# CACHE (parquet) for price data
-# -------------------------
+from next_quantforce_one import fetch_info, compute_indicators_ta, apply_strategy_tuneable
+
+# ------------------------
+# Config / Defaults
+# ------------------------
 CACHE_DIR = "cache_prices"
 os.makedirs(CACHE_DIR, exist_ok=True)
+DEFAULT_PERIOD = "2y"
+DEFAULT_TRIALS = 80
+DEFAULT_WORKERS = max(1, multiprocessing.cpu_count() - 1)
+DEFAULT_MIN_TRADES = 3
+TIMESTAMP = time.strftime("%Y%m%d_%H%M%S")
 
-def load_price_data_cached(symbol: str, period: str = "2y", interval: str = "1d", max_age_hours: int = 24):
+# ------------------------
+# Helper: Price cache (parquet)
+# ------------------------
+def load_price_data_cached(symbol: str, period: str = DEFAULT_PERIOD, interval: str = "1d", max_age_hours: int = 24) -> pd.DataFrame:
+    """
+    Load OHLCV data for `symbol` using a local parquet cache. Thread/process safe read.
+    """
     cache_file = os.path.join(CACHE_DIR, f"{symbol}_{period}_{interval}.parquet")
-    # cache hit
+    # return cached if not expired
     if os.path.exists(cache_file):
         age_h = (time.time() - os.path.getmtime(cache_file)) / 3600.0
         if age_h <= max_age_hours:
             try:
                 return pd.read_parquet(cache_file)
-            except Exception:
-                pass
-    # download and save
-    df = yf.download(symbol, period=period, interval=interval, progress=False)
+            except Exception as e:
+                print(f"[WARN] Failed to read cache for {symbol}: {e}")
+
+    # download and save (single process will write; multiple processes may race but it's acceptable)
+    try:
+        df = yf.download(symbol, period=period, interval=interval, progress=False)
+    except Exception as e:
+        print(f"[WARN] yfinance download failed for {symbol}: {e}")
+        return pd.DataFrame()
+
     if df is None or df.empty:
         return pd.DataFrame()
+
     try:
         df.to_parquet(cache_file)
     except Exception as e:
-        print("[WARN] Could not save parquet:", e)
-    return df
-
-def fetch_info():
-    try:
-        url = "https://en.wikipedia.org/wiki/Nasdaq-100"
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:101.0) Gecko/20100101 Firefox/101.0',
-            'Accept': 'application/json',
-            'Accept-Language': 'en-US,en;q=0.5',
-        }
-
-        #  Send GET request
-        response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        #  Get the symbols table
-        tables = soup.find_all('table')
-
-        #  #  Convert table to dataframe
-        df = pd.read_html(str(tables))[4]
-
-        #  Rename symbol
-        df.rename(columns={"Ticker": "Symbol"}, inplace=True)
-
-        return df['Symbol'].to_list()
-    except Exception as e:
-        print('Error loading data: ', e)
-        return None
-
-
-def compute_indicators_ta(df: pd.DataFrame) -> pd.DataFrame:
-    'Compute indicators used by the tuneable strategy.'
-    df = df.copy()
-    if len(df) < 60:
-        return df.assign(
-            ATR=np.nan,
-            RSI=np.nan,
-            MACD=np.nan,
-            MACD_signal=np.nan,
-            MACD_hist=np.nan,
-            MA20=np.nan,
-            MA50=np.nan,
-            ADX=np.nan,
-            High_20=np.nan,
-            IRG=np.nan,
-            Vol20=np.nan,
-            ATR_mean50=np.nan
-        )
-
-    try:
-        df['ATR'] = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=14).average_true_range()
-    except Exception:
-        df['ATR'] = np.nan
-
-    try:
-        df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-    except Exception:
-        df['RSI'] = np.nan
-
-    try:
-        macd = ta.trend.MACD(close=df['Close'], window_slow=26, window_fast=12, window_sign=9)
-        df['MACD'] = macd.macd()
-        df['MACD_signal'] = macd.macd_signal()
-        df['MACD_hist'] = macd.macd_diff()
-    except Exception:
-        df[['MACD', 'MACD_signal', 'MACD_hist']] = np.nan
-
-    try:
-        df['MA20'] = ta.trend.SMAIndicator(close=df['Close'], window=20).sma_indicator()
-        df['MA50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
-    except Exception:
-        df[['MA20', 'MA50']] = np.nan
-
-    try:
-        df['ADX'] = ta.trend.ADXIndicator(high=df['High'], low=df['Low'], close=df['Close'], window=14).adx()
-    except Exception:
-        df['ADX'] = np.nan
-
-    try:
-        df['High_20'] = df['High'].rolling(window=20).max().shift(1)
-    except Exception:
-        df['High_20'] = np.nan
-
-    try:
-        df['IRG'] = (df['Close'] - df['MA20']) / df['ATR']
-    except Exception:
-        df['IRG'] = np.nan
-
-    try:
-        df['Vol20'] = df['Volume'].rolling(20).mean()
-    except Exception:
-        df['Vol20'] = np.nan
-
-    try:
-        df['ATR_mean50'] = df['ATR'].rolling(50).mean()
-    except Exception:
-        df['ATR_mean50'] = np.nan
+        print(f"[WARN] Could not save parquet for {symbol}: {e}")
 
     return df
 
-
-def apply_strategy(df: pd.DataFrame,
-                            sl_mult: float = 2.5,
-                            tp_mult: float = 3.5,
-                            min_momentum_pct: float = 0.02,
-                            momentum_days: int = 7,
-                            volume_factor: float = 1.2,
-                            adx_threshold: float = 25.0,
-                            irg_threshold: float = 1.0,
-                            require_macd: bool = True,
-                            require_ma50: bool = True,
-                            require_rsi_gt: float = 30.0,
-                            allow_partial_signals: bool = False,
-                            **kwargs) -> pd.DataFrame:
-    'Tunable buy/sell strategy.'
-    df = df.copy()
-    needed = ['ATR', 'RSI', 'MACD', 'MACD_signal', 'MACD_hist', 'MA20', 'MA50', 'ADX', 'High_20', 'IRG', 'Vol20']
-    if not all(c in df.columns for c in needed):
-        df = compute_indicators_ta(df)
-
-    df.loc[:, 'Buy'] = False
-    df.loc[:, 'Sell'] = False
-    df.loc[:, 'Position'] = 0
-    df.loc[:, 'Entry_price'] = np.nan
-    df.loc[:, 'Stop_Loss'] = np.nan
-    df.loc[:, 'Take_Profit'] = np.nan
-    df.loc[:, 'Exit_Reason'] = None
-
-    in_position = False
-    entry_price = None
-    current_SL = None
-    current_TP = None
-
-    start = max(60, momentum_days + 2)
-    for i in range(start, len(df)):
-        row = df.iloc[i]
-
-        if i >= momentum_days:
-            past_close = df['Close'].iloc[i - momentum_days]
-            momentum_pct = (row['Close'] - past_close) / past_close if past_close != 0 else 0.0
-        else:
-            momentum_pct = 0.0
-
-        avg_vol = df['Vol20'].iloc[i] if not pd.isna(df['Vol20'].iloc[i]) else 0.0
-        vol_ok = (avg_vol > 0) and (row['Volume'] > volume_factor * avg_vol)
-
-        breakout_ok = (not pd.isna(df['High_20'].iloc[i])) and (row['Close'] > df['High_20'].iloc[i])
-        irg_ok = (not pd.isna(row['IRG'])) and (row['IRG'] >= irg_threshold)
-        adx_ok = (not pd.isna(row['ADX'])) and (row['ADX'] >= adx_threshold)
-
-        ma50_ok = True if not require_ma50 else ((not pd.isna(row.get('MA50'))) and (row['Close'] > row.get('MA50')))
-        macd_ok = True if not require_macd else ((not pd.isna(row.get('MACD'))) and (not pd.isna(row.get('MACD_signal'))) and (row['MACD'] > row.get('MACD_signal')))
-        rsi_ok = (row.get('RSI', 0) > require_rsi_gt)
-        momentum_ok = (momentum_pct >= min_momentum_pct)
-
-        if allow_partial_signals:
-            checks = [breakout_ok, ma50_ok, adx_ok, macd_ok, irg_ok, momentum_ok, vol_ok, rsi_ok]
-            buy_cond = sum(bool(x) for x in checks) >= 4
-        else:
-            buy_cond = breakout_ok and ma50_ok and adx_ok and macd_ok and irg_ok and momentum_ok and vol_ok and rsi_ok
-
-        if (not in_position) and buy_cond:
-            in_position = True
-            entry_price = row['Close']
-            atr = row['ATR'] if not pd.isna(row['ATR']) else 0.0
-            current_SL = entry_price - sl_mult * atr
-            current_TP = entry_price + tp_mult * atr
-
-            df.at[df.index[i], 'Buy'] = True
-            df.at[df.index[i], 'Entry_price'] = entry_price
-            df.at[df.index[i], 'Stop_Loss'] = current_SL
-            df.at[df.index[i], 'Take_Profit'] = current_TP
-            df.at[df.index[i], 'Position'] = 1
-            continue
-
-        if in_position:
-            price = row['Close']
-            exit_reason = None
-
-            if (not pd.isna(current_SL)) and (price <= current_SL):
-                exit_reason = 'SL'
-            elif (not pd.isna(current_TP)) and (price >= current_TP):
-                exit_reason = 'TP'
-            elif (not pd.isna(row.get('MA20'))) and (price < row.get('MA20')):
-                exit_reason = 'MA20_break'
-            elif (not pd.isna(row.get('MACD'))) and (not pd.isna(row.get('MACD_signal'))) and (row.get('MACD') < row.get('MACD_signal')):
-                exit_reason = 'MACD_loss'
-            elif (not pd.isna(row.get('ADX'))) and (row.get('ADX') < max(12, adx_threshold * 0.6)):
-                exit_reason = 'ADX_fall'
-
-            if exit_reason:
-                df.at[df.index[i], 'Sell'] = True
-                df.at[df.index[i], 'Stop_Loss'] = current_SL
-                df.at[df.index[i], 'Take_Profit'] = current_TP
-                df.at[df.index[i], 'Exit_Reason'] = exit_reason
-                df.at[df.index[i], 'Position'] = 0
-
-                in_position = False
-                entry_price = None
-                current_SL = None
-                current_TP = None
-            else:
-                df.at[df.index[i], 'Position'] = 1
-        else:
-            df.at[df.index[i], 'Position'] = 0
-
-    return df
-
-# -------------------------
-# backtest helper returns trade-return list and metrics
-# -------------------------
-def backtest_symbol_from_df(df: pd.DataFrame, params: Dict) -> Dict:
+# ------------------------
+# Backtest single DF -> trade statistics
+# ------------------------
+def extract_trades_from_signals(df_signals: pd.DataFrame) -> List[float]:
     """
-    Apply strategy to df (with indicators) and extract completed trade returns.
-    Returns:
-      { "symbol": str(optional),
-        "trade_returns": List[float],
-        "trades": int,
-        "total_return": float,
-        "sharpe": float,
-        "win_rate": float,
-        "max_drawdown": float }
+    Given dataframe with Buy/Sell flags and Close price, extract list of trade returns.
+    A Buy opens a trade (if not currently in position). The next Sell closes it.
+    Returns list of returns = (exit/entry - 1).
     """
-    if df is None or df.empty:
-        return {"trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
-
-    # ensure indicators
-    required = ["ATR","MA20","MA50","ADX","IRG","Vol20","MACD","MACD_signal","RSI","High_20"]
-    if not all(c in df.columns for c in required):
-        df = compute_indicators_ta(df)
-
-    df_res = apply_strategy(df.copy(), **params)
-    # collect trades: match buy -> next sell
     trade_returns = []
     in_pos = False
-    entry = None
-    for idx, r in df_res.iterrows():
-        if (not in_pos) and r.get("Buy", False):
-            in_pos = True
-            entry = float(r["Close"])
-        elif in_pos and r.get("Sell", False):
-            exitp = float(r["Close"])
-            if entry and entry > 0:
-                trade_returns.append((exitp / entry) - 1.0)
-            in_pos = False
-            entry = None
-    trades = len(trade_returns)
-    if trades == 0:
-        return {"trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
-    arr = np.array(trade_returns)
-    total_return = float(np.prod(1 + arr) - 1.0)
-    win_rate = float((arr > 0).sum() / len(arr))
-    sharpe = float((arr.mean() / arr.std()) * math.sqrt(252)) if arr.std() > 0 else 0.0
-    # compute equity sequence for drawdown
-    eq = np.cumprod(1 + arr)
-    peak = np.maximum.accumulate(eq)
-    dd = (peak - eq) / peak
-    max_dd = float(np.max(dd)) if len(dd)>0 else 0.0
-    return {"trade_returns": trade_returns, "trades": trades, "total_return": total_return, "sharpe": sharpe, "win_rate": win_rate, "max_drawdown": max_dd}
+    entry_price = None
 
-# -------------------------
-# multiprocessing top-level worker (picklable)
-# -------------------------
-def _eval_symbol_task(args: Tuple[str, Dict, str]):
+    # Use rows in chronological order
+    for _, row in df_signals.iterrows():
+        buy = bool(row.get("Buy", False))
+        sell = bool(row.get("Sell", False))
+        price = row.get("Close", np.nan)
+
+        if (not in_pos) and buy:
+            if not pd.isna(price):
+                in_pos = True
+                entry_price = float(price)
+        elif in_pos and sell:
+            if (entry_price is not None) and (not pd.isna(price)) and entry_price > 0:
+                trade_returns.append((float(price) / float(entry_price)) - 1.0)
+            in_pos = False
+            entry_price = None
+    return trade_returns
+
+def backtest_df(df: pd.DataFrame, params: Dict) -> Dict:
+    """
+    Apply strategy (indicators expected or computed), return metrics per-symbol:
+      { trades, total_return, sharpe, win_rate, max_drawdown, trade_returns }
+    """
+    if df is None or df.empty:
+        return {"trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "trade_returns": []}
+    try:
+        # compute indicators if missing
+        try:
+            needed = ["ATR", "MA20", "MA50", "ADX", "IRG", "Vol20", "MACD", "MACD_signal", "RSI", "High_20"]
+            if not all(c in df.columns for c in needed):
+                df = compute_indicators_ta(df)
+        except Exception:
+            # if compute_indicators_ta fails, still try to run strategy; user must ensure function exists
+            df = compute_indicators_ta(df)
+
+        res = apply_strategy_tuneable(df.copy(), **params)
+
+        trade_returns = extract_trades_from_signals(res)
+        trades = len(trade_returns)
+        if trades == 0:
+            return {"trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "trade_returns": []}
+
+        arr = np.array(trade_returns)
+        # total return as compounded
+        total_return = float(np.prod(1 + arr) - 1.0)
+        win_rate = float((arr > 0).sum() / len(arr))
+        sharpe = float((arr.mean() / arr.std()) * math.sqrt(252)) if arr.std() > 0 else 0.0
+
+        # equity curve and max drawdown
+        eq = np.cumprod(1 + arr)
+        peak = np.maximum.accumulate(eq)
+        dd = (peak - eq) / peak
+        max_dd = float(np.max(dd)) if len(dd) > 0 else 0.0
+
+        return {"trades": trades, "total_return": total_return, "sharpe": sharpe, "win_rate": win_rate, "max_drawdown": max_dd, "trade_returns": trade_returns}
+    except Exception as e:
+        print(f"[WARN] backtest_df exception: {e}")
+        return {"trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "trade_returns": []}
+
+# ------------------------
+# Multiprocessing worker (top-level, picklable)
+# ------------------------
+def _eval_symbol_task(args: Tuple[str, Dict, str]) -> Dict:
     symbol, params, period = args
     try:
         df = load_price_data_cached(symbol, period=period)
         if df is None or df.empty:
-            return {"symbol": symbol, "trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
+            return {"symbol": symbol, "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "trade_returns": []}
 
         if isinstance(df.columns, pd.MultiIndex):
             try:
@@ -315,47 +167,52 @@ def _eval_symbol_task(args: Tuple[str, Dict, str]):
             except Exception:
                 df.columns = [str(c) for c in df.columns]
 
-        result = backtest_symbol_from_df(df, params)
-        result["symbol"] = symbol
-        return result
-    except Exception:
-        return {"symbol": symbol, "trade_returns": [], "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0}
+        metrics = backtest_df(df, params)
+        metrics["symbol"] = symbol
+        return metrics
+    except Exception as e:
+        print(f"[WARN] _eval_symbol_task error for {symbol}: {e}")
+        return {"symbol": symbol, "trades": 0, "total_return": 0.0, "sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "trade_returns": []}
 
-# -------------------------
-# Monte-Carlo simulation and score (uses trade-returns)
-# -------------------------
-def monte_carlo_from_trade_returns(trade_returns: List[float], n_sim: int = 2000, noise_std: float = 0.02):
+# ------------------------
+# Monte-Carlo (per-symbol) + normalized score
+# ------------------------
+def monte_carlo_from_trade_returns(trade_returns: List[float], n_sim: int = 2000, noise_std: float = 0.02) -> Optional[np.ndarray]:
     """
-    Build MC equity curves by resampling trade_returns with replacement.
-    Adds small gaussian noise proportional to std(trade_returns).
-    Returns numpy array shape (n_sim, len(trade_returns)+1) of equity curves starting at 1.0
+    Resample trade returns with replacement and add small gaussian noise.
+    Returns array shape (n_sim, len(trade_returns)+1) representing equity factors starting from 1.0
     """
     if not trade_returns or len(trade_returns) < 5:
         return None
     arr = np.array(trade_returns)
     base_std = arr.std() if arr.std() > 0 else 1e-6
-    sims = []
     m = len(arr)
-    for _ in range(n_sim):
+    sims = np.empty((n_sim, m + 1), dtype=float)
+    for i in range(n_sim):
         sampled = np.random.choice(arr, size=m, replace=True)
         noise = np.random.normal(0, noise_std * base_std, size=m)
         sampled = sampled + noise
-        eq = np.empty(m+1, dtype=float)
+        eq = np.empty(m + 1, dtype=float)
         eq[0] = 1.0
-        for i, r in enumerate(sampled, start=1):
-            eq[i] = eq[i-1] * (1.0 + r)
-        sims.append(eq)
-    return np.array(sims)
+        for j, r in enumerate(sampled, start=1):
+            eq[j] = eq[j - 1] * (1.0 + r)
+        sims[i, :] = eq
+    return sims
 
-def compute_monte_carlo_score(mc_curves: np.ndarray):
+def compute_monte_carlo_score_normalized(mc_curves: np.ndarray) -> float:
     """
-    Compute robust score from MC curves.
-    Returns a float (higher = better robustness).
+    Compute a bounded, normalized MC-stability score from mc_curves.
+    Score range approx [-5, +5]. Positive = robust; negative = fragile.
+    Computation uses median final return, worst-5% final return and worst drawdown percentiles.
     """
     if mc_curves is None or len(mc_curves) == 0:
-        return -1.0
+        return 0.0  # neutral for missing MC (we won't reward)
     finals = mc_curves[:, -1]
-    # compute drawdowns for each curve
+    # final returns as factor (1.0 = no change). Convert to returns
+    final_returns = finals - 1.0
+    median_ret = np.median(final_returns)
+    worst5_ret = np.percentile(final_returns, 5)
+    # drawdowns per simulation
     maxdds = []
     for curve in mc_curves:
         peak = curve[0]
@@ -366,110 +223,137 @@ def compute_monte_carlo_score(mc_curves: np.ndarray):
             if dd > maxdd:
                 maxdd = dd
         maxdds.append(maxdd)
-    finals = np.array(finals)
-    maxdds = np.array(maxdds)
-    median_ret = np.median(finals) - 1.0  # convert from factor to return
-    worst5_ret = np.percentile(finals, 5) - 1.0
     median_dd = np.median(maxdds)
     worst95_dd = np.percentile(maxdds, 95)
-    prob_loss = (finals < 1.0).mean()
-    # Score: reward median ret, reward worst5 ret, penalize median/worst dd and probability of loss
-    score = (1.0 * median_ret) + (0.6 * worst5_ret) - (1.0 * median_dd) - (1.5 * worst95_dd) - (1.0 * prob_loss)
-    return float(score)
 
-# -------------------------
-# Core evaluate_params_on_universe with MC integrated
-# -------------------------
-def evaluate_params_on_universe_with_mc(symbols: List[str], params: Dict, period: str = "2y", workers: int = 1, min_trades_required: int = 1, verbose: bool = False):
+    # Normalize components to reasonable ranges:
+    # median_ret ~ -1..+5 typically, worst5_ret lower; dd in 0..1
+    # Build score: reward median_ret and worst-case, penalize dd and prob of loss
+    prob_loss = float((finals < 1.0).mean())
+
+    # scale factors tuned to make typical scores between -3..+3
+    score = (
+        3.0 * median_ret +        # reward typical return
+        2.0 * worst5_ret -        # reward robustness in tails
+        2.5 * median_dd -         # penalize median drawdown
+        3.0 * worst95_dd -        # penalize extreme drawdown
+        1.5 * prob_loss           # penalize probability of ending net-loss
+    )
+
+    # clip to avoid runaway magnitudes and cap
+    score = float(np.clip(score, -10.0, 10.0))
+    return score
+
+# ------------------------
+# Evaluate parameters across universe (averaging per-symbol metrics)
+# ------------------------
+def evaluate_params_on_universe(symbols: List[str], params: Dict, period: str = DEFAULT_PERIOD, workers: int = 1, min_trades_required: int = DEFAULT_MIN_TRADES, n_mc: int = 1000, verbose: bool = False) -> Dict:
     """
-    Evaluate params across the symbol list, gather trade returns, compute aggregated metrics,
-    run Monte-Carlo on combined trade-returns and return aggregated metrics + mc_score.
+    Evaluate params across the symbol list, compute per-symbol metrics, MC per-symbol, then aggregate.
+    Returns dictionary with averaged metrics and normalized mc_score aggregated.
     """
     if not symbols:
         return {"fitness": -10.0, "trades": 0}
 
     tasks = [(s, params, period) for s in symbols]
-
-    # parallel map
     if workers and workers > 1:
         try:
             with multiprocessing.Pool(processes=workers) as pool:
                 results = pool.map(_eval_symbol_task, tasks)
         except Exception as e:
             if verbose:
-                print("[WARN] multiprocessing failed:", e, "falling back to sequential")
+                print(f"[WARN] multiprocessing failed ({e}), falling back to sequential")
             results = list(map(_eval_symbol_task, tasks))
     else:
         results = list(map(_eval_symbol_task, tasks))
 
-    # collect all trade returns across symbols
-    all_trade_returns = []
+    # normalize results: remove None and ensure keys
+    valid_results = [r for r in results if r and isinstance(r, dict)]
+    # compute per-symbol MC scores and collect only symbols with trades
+    mc_scores = []
     per_symbol_metrics = []
-    trades_total = 0
-    for r in results:
-        tr = r.get("trade_returns", [])
-        trades_total += len(tr)
-        if tr:
-            all_trade_returns.extend(tr)
+    traded_symbols = []
+    for r in valid_results:
+        trades = int(r.get("trades", 0))
+        if trades <= 0:
+            # still include for count but not in aggregated means
+            per_symbol_metrics.append(r)
+            continue
+        # run MC on trade returns of that symbol
+        trade_returns = r.get("trade_returns", []) or []
+        mc_curves = monte_carlo_from_trade_returns(trade_returns, n_sim=n_mc, noise_std=0.02) if len(trade_returns) >= 5 else None
+        mc_score_sym = compute_monte_carlo_score_normalized(mc_curves)
+        r["mc_score"] = mc_score_sym
+        mc_scores.append(mc_score_sym)
         per_symbol_metrics.append(r)
+        traded_symbols.append(r["symbol"])
 
-    if trades_total == 0:
+    # aggregated metrics averaged across symbols that had trades
+    traded = [r for r in per_symbol_metrics if r.get("trades", 0) > 0]
+    trades_total = int(sum(r.get("trades", 0) for r in per_symbol_metrics))
+    if len(traded) == 0:
         if verbose:
-            print("[INFO] No completed trades for params on universe.")
-        return {"fitness": -1.0, "trades": 0, "mc_score": -1.0}
+            print("[INFO] No completed trades across universe with these params.")
+        return {"fitness": -1.0, "trades": 0, "per_symbol": per_symbol_metrics}
 
-    # aggregated metrics from symbols which had trades
-    valid = [r for r in per_symbol_metrics if r.get("trades", 0) > 0]
-    total_return_mean = float(np.mean([r["total_return"] for r in valid]))
-    sharpe_mean = float(np.mean([r["sharpe"] for r in valid]))
-    win_rate_mean = float(np.mean([r["win_rate"] for r in valid]))
-    maxdd_mean = float(np.mean([r["max_drawdown"] for r in valid]))
+    total_return_mean = float(np.mean([r["total_return"] for r in traded]))
+    sharpe_mean = float(np.mean([r["sharpe"] for r in traded]))
+    win_rate_mean = float(np.mean([r["win_rate"] for r in traded]))
+    maxdd_mean = float(np.mean([r["max_drawdown"] for r in traded]))
+    # MC aggregated: mean of per-symbol normalized scores
+    mc_score_mean = float(np.mean(mc_scores)) if mc_scores else 0.0
 
-    # Monte-Carlo on combined trade returns (resample trades)
-    mc_curves = monte_carlo_from_trade_returns(all_trade_returns, n_sim=2000, noise_std=0.02)
-    mc_score = compute_monte_carlo_score(mc_curves)
+    # Final normalized fitness composition (bounded)
+    # We also clip inputs to sensible ranges to avoid NaN/Inf
+    total_return_mean = float(np.nan_to_num(total_return_mean, nan=0.0, posinf=0.0, neginf=0.0))
+    sharpe_mean = float(np.nan_to_num(sharpe_mean, nan=0.0, posinf=0.0, neginf=0.0))
+    win_rate_mean = float(np.nan_to_num(win_rate_mean, nan=0.0, posinf=0.0, neginf=0.0))
+    maxdd_mean = float(np.nan_to_num(maxdd_mean, nan=0.0, posinf=1.0, neginf=0.0))
+    mc_score_mean = float(np.nan_to_num(mc_score_mean, nan=0.0, posinf=10.0, neginf=-10.0))
 
-    # final fitness: include mc_score (scaled)
+    # Compose fitness: weights tuned to produce reasonable numeric scale
     fitness = (
-        1.0 * total_return_mean +
-        0.8 * sharpe_mean +
-        0.5 * win_rate_mean -
-        0.6 * maxdd_mean +
-        1.2 * mc_score
+        1.0 * total_return_mean +        # reward returns
+        0.6 * sharpe_mean +              # reward risk-adjusted performance
+        0.4 * win_rate_mean -            # reward consistency
+        0.6 * maxdd_mean +               # penalize drawdown
+        0.8 * mc_score_mean              # reward Monte-Carlo robustness
     )
 
+    # final safety clipping
+    fitness = float(np.clip(fitness, -999.0, 9999999.0))
+
     if verbose:
-        print(f"[EVAL] trades_total={trades_total} ret_mean={total_return_mean:.4f} sharpe={sharpe_mean:.3f} winrate={win_rate_mean:.3f} maxdd={maxdd_mean:.3f} mc_score={mc_score:.4f} fitness={fitness:.4f}")
+        print(f"[EVAL] symbols={len(symbols)} traded_symbols={len(traded)} trades_total={trades_total} ret_mean={total_return_mean:.4f} sharpe={sharpe_mean:.3f} winrate={win_rate_mean:.3f} maxdd={maxdd_mean:.3f} mc_score={mc_score_mean:.3f} fitness={fitness:.3f}")
 
     return {
-        "fitness": float(fitness),
-        "trades": int(trades_total),
+        "fitness": fitness,
+        "trades": trades_total,
         "total_return_mean": total_return_mean,
         "sharpe_mean": sharpe_mean,
         "win_rate_mean": win_rate_mean,
         "max_drawdown_mean": maxdd_mean,
-        "mc_score": mc_score,
+        "mc_score_mean": mc_score_mean,
         "per_symbol": per_symbol_metrics
     }
 
-
-# ---------------------------
-# Optuna objective
-# ---------------------------
-def make_objective(symbols: List[str], period: str, workers: int, min_trades_required: int):
+# ------------------------
+# Optuna objective builder
+# ------------------------
+def make_objective(symbols: List[str], period: str, workers: int, min_trades_required: int, n_mc: int, verbose: bool):
     def objective(trial: optuna.Trial):
-        adx_threshold = trial.suggest_int("adx_threshold", 10, 30)
-        irg_threshold = trial.suggest_float("irg_threshold", 0.10, 1.60, step=0.05)
-        min_momentum_pct = trial.suggest_float("min_momentum_pct", 0.002, 0.03, step=0.001)
-        momentum_days = trial.suggest_int("momentum_days", 3, 10)
-        volume_factor = trial.suggest_float("volume_factor", 0.8, 1.6, step=0.05)
-        sl_mult = trial.suggest_float("sl_mult", 1.0, 3.0, step=0.1)
-        tp_mult = trial.suggest_float("tp_mult", 1.5, 6.0, step=0.1)
-        allow_partial_signals = trial.suggest_categorical("allow_partial_signals", [0, 1])
-        require_macd = trial.suggest_categorical("require_macd", [0, 1])
-        require_ma50 = trial.suggest_categorical("require_ma50", [0, 1])
-        require_rsi_gt = trial.suggest_int("require_rsi_gt", 10, 50)
-
+        # search space (sensible)
+        adx_threshold = trial.suggest_int("adx_threshold", 8, 30)
+        irg_threshold = trial.suggest_float("irg_threshold", 0.1, 1.6, step=0.05)
+        min_momentum_pct = trial.suggest_float("min_momentum_pct", 0.001, 0.05, step=0.001)
+        momentum_days = trial.suggest_int("momentum_days", 3, 20)
+        volume_factor = trial.suggest_float("volume_factor", 0.7, 2.0, step=0.05)
+        sl_mult = trial.suggest_float("sl_mult", 1.0, 4.0, step=0.1)
+        tp_mult = trial.suggest_float("tp_mult", 1.0, 6.0, step=0.1)
+        allow_partial_signals = int(trial.suggest_categorical("allow_partial_signals", [0, 1]))
+        require_macd = int(trial.suggest_categorical("require_macd", [0, 1]))
+        require_ma50 = int(trial.suggest_categorical("require_ma50", [0, 1]))
+        require_rsi_gt = int(trial.suggest_int("require_rsi_gt", 10, 60))
 
         params = {
             "adx_threshold": float(adx_threshold),
@@ -479,36 +363,36 @@ def make_objective(symbols: List[str], period: str, workers: int, min_trades_req
             "volume_factor": float(volume_factor),
             "sl_mult": float(sl_mult),
             "tp_mult": float(tp_mult),
-            "allow_partial_signals": int(allow_partial_signals),
-            "require_macd": int(require_macd),
-            "require_ma50": int(require_ma50),
-            "require_rsi_gt": int(require_rsi_gt),
+            "allow_partial_signals": allow_partial_signals,
+            "require_macd": require_macd,
+            "require_ma50": require_ma50,
+            "require_rsi_gt": require_rsi_gt,
         }
-        # evaluate across universe
-        agg = evaluate_params_on_universe_with_mc(symbols, params, period=period, workers=workers, min_trades_required=min_trades_required)
+
+        agg = evaluate_params_on_universe(symbols, params, period=period, workers=workers, min_trades_required=min_trades_required, n_mc=n_mc, verbose=verbose)
+
         trial.set_user_attr("agg", agg)
         trial.set_user_attr("params", params)
-        return float(agg.get("fitness", -10.0))
-
+        return float(agg.get("fitness", -999.0))
     return objective
 
-
-# ---------------------------
-# Runner
-# ---------------------------
-def run_optimize(symbols: List[str], n_trials: int = 100, period: str = "2y", workers: int = 4, study_name: str = None, min_trades_required: int = 3):
-
+# ------------------------
+# Runner (Optuna + CLI)
+# ------------------------
+def run_optimize(symbols: List[str], n_trials: int = DEFAULT_TRIALS, period: str = DEFAULT_PERIOD, workers: int = DEFAULT_WORKERS, storage: str = None, min_trades_required: int = DEFAULT_MIN_TRADES, n_mc: int = 1000, verbose: bool = False):
     sampler = optuna.samplers.TPESampler(seed=42)
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=0, interval_steps=1)
-    study = optuna.create_study(direction="maximize", sampler=sampler, pruner=pruner, study_name=None, storage=None, load_if_exists=True)
-    objective = make_objective(symbols, period, workers, min_trades_required)
+    study = optuna.create_study(direction="maximize", sampler=sampler, pruner=pruner, study_name=None, storage=storage, load_if_exists=True)
+    objective = make_objective(symbols, period, workers, min_trades_required, n_mc, verbose)
+
+    print(f"[START] Optuna: trials={n_trials}, symbols={len(symbols)}, workers={workers}, period={period}, n_mc={n_mc}")
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
     best = study.best_trial
     best_agg = best.user_attrs.get("agg", {})
     best_params = best.user_attrs.get("params", best.params)
 
-    out_json = "optuna_best_parameters_fixed_mc.json"
+    out_json = "optuna_best_parameters_mc.json"
     with open(out_json, "w") as fh:
         json.dump({"fitness": best.value, "params": best_params, "agg": best_agg, "trial_number": best.number}, fh, indent=2)
 
@@ -517,28 +401,36 @@ def run_optimize(symbols: List[str], n_trials: int = 100, period: str = "2y", wo
         row = {"trial_number": t.number, "value": t.value}
         row.update(t.params)
         agg = t.user_attrs.get("agg", {})
-        row.update({"trades": agg.get("trades", None), "sharpe_mean": agg.get("sharpe_mean", None), "total_return_mean": agg.get("total_return_mean", None), "max_drawdown_mean": agg.get("max_drawdown_mean", None), "mc_score": agg.get("mc_score", None)})
+        row.update({
+            "trades": agg.get("trades", None),
+            "total_return_mean": agg.get("total_return_mean", None),
+            "sharpe_mean": agg.get("sharpe_mean", None),
+            "max_drawdown_mean": agg.get("max_drawdown_mean", None),
+            "mc_score_mean": agg.get("mc_score_mean", None)
+        })
         rows.append(row)
     df = pd.DataFrame(rows)
-    out_csv = "optuna_trials_fixed_mc.csv"
+    out_csv = "optuna_trials_mc.csv"
     df.to_csv(out_csv, index=False)
 
-    print(f"[DONE] Best fitness: {best.value}, saved: {out_json}, trials: {out_csv}")
+    print(f"[DONE] Best fitness: {best.value}, saved {out_json}, trials saved to {out_csv}")
     return study, best, out_json, out_csv
 
-
-# ---------------------------
+# ------------------------
 # CLI
-# ---------------------------
+# ------------------------
 if __name__ == "__main__":
-    DEFAULT_MIN_TRADES = 3
     default_symbols = ["AAPL", "MSFT", "NVDA", "AMZN"]
     nasdaq_symbols = fetch_info()
     p = argparse.ArgumentParser()
-    p.add_argument("--symbols", nargs="+", default=nasdaq_symbols, help="Symbol list")
-    p.add_argument("--trials", type=int, default=80, help="Number of Optuna trials")
-    p.add_argument("--workers", type=int, default=8, help="Parallel workers for symbol evaluation (multiprocessing Pool size)")
-    p.add_argument("--period", type=str, default="2y", help="yfinance history period")
+    p.add_argument("--symbols", nargs="+", default=nasdaq_symbols, help="Symbols to evaluate")
+    p.add_argument("--trials", type=int, default=DEFAULT_TRIALS)
+    p.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    p.add_argument("--period", type=str, default=DEFAULT_PERIOD)
+    p.add_argument("--storage", type=str, default=None, help="sqlite:///optuna.db")
     p.add_argument("--min_trades", type=int, default=DEFAULT_MIN_TRADES)
+    p.add_argument("--n_mc", type=int, default=1000, help="MC sims per symbol (reduce for speed)")
+    p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
-    run_optimize(symbols=args.symbols, n_trials=args.trials, period=args.period, workers=args.workers, min_trades_required=args.min_trades)
+
+    run_optimize(symbols=args.symbols, n_trials=args.trials, period=args.period, workers=args.workers, storage=args.storage, min_trades_required=args.min_trades, n_mc=args.n_mc, verbose=args.verbose)

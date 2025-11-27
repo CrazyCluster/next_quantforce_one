@@ -24,7 +24,6 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import ta
-from next_parameter_optimizer_one import compute_indicators_ta, apply_strategy
 
 # Alpaca
 try:
@@ -61,10 +60,13 @@ ADX_THRESHOLD = 25
 IRG_THRESHOLD = 1.0
 MIN_WEIGHT = 0.01
 
+# Strategy params Exit
+MAX_HOLDING_DAYS = 60
+
 # Allocation / ordering
 MINIMAL_CAPITAL_ACCOUNT = 500.00
 MIN_CAPITAL_PER_TRADE = 50.0
-MAX_ORDERS_ACCOUNT = 7     # limit number of new buys per run
+MAX_ORDERS_ACCOUNT = 5     # limit number of new buys per run
 ALLOW_FRACTIONAL = False      # if your broker supports fractional shares
 
 
@@ -101,8 +103,7 @@ def fetch_info():
         return None
 
 
-
-def load_optuna_parameters(path="optuna_best_parameters.json"):
+def load_optuna_parameters(path="optuna_best_parameters_mc.json"):
     """
     Lädt die besten Optuna-Parameter aus JSON und gibt sie als Dictionary zurück.
     Fällt automatisch auf DEFAULT_PARAMS zurück, wenn Datei fehlt/korrupt ist.
@@ -203,56 +204,257 @@ def download_batch(tickers: List[str], period=DATA_PERIOD, interval=DATA_INTERVA
 # -----------------------------------------------------------
 # 3) Compute indicators using ta (handles missing safely)
 # -----------------------------------------------------------
-def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def compute_indicators_ta(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute indicators used by the tuneable strategy."""
     df = df.copy()
-    if len(df) < MIN_HISTORY:
-        # create columns with NaNs so later code can handle gracefully
-        for col in ["ATR", "RSI", "MACD", "MACD_signal", "MACD_hist", "MA20", "MA50", "ADX", "High_20", "IRG", "Vol20"]:
-            df[col] = np.nan
-        return df
+    if len(df) < 60:
+        # Return DataFrame with empty indicator columns but no crash
+        return df.assign(
+            ATR=np.nan,
+            RSI=np.nan,
+            MACD=np.nan,
+            MACD_signal=np.nan,
+            MACD_hist=np.nan,
+            MA20=np.nan,
+            MA50=np.nan,
+            ADX=np.nan,
+            High_20=np.nan,
+            IRG=np.nan,
+            Vol20=np.nan,
+            ATR_mean50=np.nan,
+            rATR=np.nan,
+            ATR50=np.nan
+        )
 
-    # ATR
+    # --- ATR ---
     try:
-        df["ATR"] = ta.volatility.AverageTrueRange(high=df["High"], low=df["Low"], close=df["Close"], window=14).average_true_range()
+        atr_indicator = ta.volatility.AverageTrueRange(
+            high=df['High'], low=df['Low'], close=df['Close'], window=14
+        )
+        df['ATR'] = atr_indicator.average_true_range()
     except Exception:
-        df["ATR"] = np.nan
+        df['ATR'] = np.nan
 
-    # RSI
+    # --- RSI ---
     try:
-        df["RSI"] = ta.momentum.RSIIndicator(close=df["Close"], window=14).rsi()
+        df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
     except Exception:
-        df["RSI"] = np.nan
+        df['RSI'] = np.nan
 
-    # MACD
+    # --- MACD ---
     try:
-        macd = ta.trend.MACD(close=df["Close"], window_slow=26, window_fast=12, window_sign=9)
-        df["MACD"] = macd.macd()
-        df["MACD_signal"] = macd.macd_signal()
-        df["MACD_hist"] = macd.macd_diff()
+        macd = ta.trend.MACD(close=df['Close'], window_slow=26, window_fast=12, window_sign=9)
+        df['MACD'] = macd.macd()
+        df['MACD_signal'] = macd.macd_signal()
+        df['MACD_hist'] = macd.macd_diff()
     except Exception:
-        df["MACD"] = df["MACD_signal"] = df["MACD_hist"] = np.nan
+        df[['MACD', 'MACD_signal', 'MACD_hist']] = np.nan
 
-    # Moving averages
+    # --- Moving Averages ---
     try:
-        df["MA20"] = ta.trend.SMAIndicator(close=df["Close"], window=20).sma_indicator()
-        df["MA50"] = ta.trend.SMAIndicator(close=df["Close"], window=50).sma_indicator()
+        df['MA20'] = ta.trend.SMAIndicator(close=df['Close'], window=20).sma_indicator()
+        df['MA50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
     except Exception:
-        df["MA20"] = df["MA50"] = np.nan
+        df[['MA20', 'MA50']] = np.nan
 
-    # ADX
+    # --- ADX ---
     try:
-        df["ADX"] = ta.trend.ADXIndicator(high=df["High"], low=df["Low"], close=df["Close"], window=14).adx()
+        df['ADX'] = ta.trend.ADXIndicator(
+            high=df['High'], low=df['Low'], close=df['Close'], window=14
+        ).adx()
     except Exception:
-        df["ADX"] = np.nan
+        df['ADX'] = np.nan
 
-    # High 20 (shifted by 1)
-    df["High_20"] = df["High"].rolling(window=20).max().shift(1)
+    # --- Breakout (High 20) ---
+    try:
+        df['High_20'] = df['High'].rolling(window=20).max().shift(1)
+    except Exception:
+        df['High_20'] = np.nan
 
-    # IRG
-    df["IRG"] = (df["Close"] - df["MA20"]) / df["ATR"]
+    # --- IRG indicator ---
+    try:
+        df['IRG'] = (df['Close'] - df['MA20']) / df['ATR']
+    except Exception:
+        df['IRG'] = np.nan
 
-    # Vol20
-    df["Vol20"] = df["Volume"].rolling(20).mean()
+    # --- Volume regime ---
+    try:
+        df['Vol20'] = df['Volume'].rolling(20).mean()
+    except Exception:
+        df['Vol20'] = np.nan
+
+    # --- ATR 50-day average ---
+    try:
+        df['ATR_mean50'] = df['ATR'].rolling(50).mean()
+        df['ATR50'] = df['ATR_mean50']   # alias for readability
+    except Exception:
+        df['ATR_mean50'] = np.nan
+        df['ATR50'] = np.nan
+
+    # --- rATR: relative volatility (ATR / Close) ---
+    try:
+        df['rATR'] = df['ATR'] / df['Close'].replace(0, np.nan)
+    except Exception:
+        df['rATR'] = np.nan
+
+    return df
+
+def apply_strategy_tuneable(
+    df: pd.DataFrame,
+    sl_mult: float = 2.5,
+    tp_mult: float = 3.5,
+    min_momentum_pct: float = 0.02,
+    momentum_days: int = 7,
+    volume_factor: float = 1.2,
+    adx_threshold: float = 25.0,
+    irg_threshold: float = 1.0,
+    require_macd: bool = True,
+    require_ma50: bool = True,
+    require_rsi_gt: float = 30.0,
+    allow_partial_signals: bool = False,  # NEW
+    **kwargs
+    ) -> pd.DataFrame:
+    """Tunable buy/sell strategy with volatility-regime filtering and additional exits."""
+    df = df.copy()
+
+    needed = ['ATR', 'ATR50', 'RSI', 'MACD', 'MACD_signal', 'MACD_hist',
+              'MA20', 'MA50', 'ADX', 'High_20', 'IRG', 'Vol20']
+    if not all(c in df.columns for c in needed):
+        df = compute_indicators_ta(df)
+
+    # --- NEW: relative ATR + Volatility regimes ---
+    df['rATR'] = df['ATR'] / df['Close']
+
+    df['Buy'] = False
+    df['Sell'] = False
+    df['Position'] = 0
+    df['Entry_price'] = np.nan
+    df['Entry_index'] = np.nan
+    df['Stop_Loss'] = np.nan
+    df['Take_Profit'] = np.nan
+    df['Exit_Reason'] = None
+
+    in_position = False
+    entry_price = None
+    entry_index = None
+    current_SL = None
+    current_TP = None
+
+    start = max(60, momentum_days + 2)
+
+    for i in range(start, len(df)):
+        row = df.iloc[i]
+
+        # -------- MOMENTUM --------
+        if i >= momentum_days:
+            past_close = df['Close'].iloc[i - momentum_days]
+            momentum_pct = (row['Close'] - past_close) / past_close if past_close != 0 else 0.0
+        else:
+            momentum_pct = 0.0
+
+        # -------- VOLUME --------
+        avg_vol = df['Vol20'].iloc[i] if not pd.isna(df['Vol20'].iloc[i]) else 0.0
+        vol_ok = (avg_vol > 0) and (row['Volume'] > volume_factor * avg_vol)
+
+        # -------- BREAKOUT & SIGNAL FILTER --------
+        breakout_ok = (not pd.isna(df['High_20'].iloc[i])) and (row['Close'] > df['High_20'].iloc[i])
+        irg_ok = (not pd.isna(row['IRG'])) and (row['IRG'] >= irg_threshold)
+        adx_ok = (not pd.isna(row['ADX'])) and (row['ADX'] >= adx_threshold)
+
+        ma50_ok = (not require_ma50) or ((not pd.isna(row['MA50'])) and (row['Close'] > row['MA50']))
+        macd_ok = (not require_macd) or (
+            (not pd.isna(row['MACD'])) and (not pd.isna(row['MACD_signal'])) and (row['MACD'] > row['MACD_signal'])
+        )
+        rsi_ok = row.get('RSI', 0) > require_rsi_gt
+        momentum_ok = momentum_pct >= min_momentum_pct
+
+        # -------- VOLATILITY REGIME FILTER (NEW) --------
+        rATR = row['rATR']
+
+        vol_buy_ok = rATR < 0.030     # only low/medium
+
+        # Volatility Spike filter
+        atr_spike = (row['ATR'] > row['ATR50'] * 1.6)
+
+        # BUY condition
+        if allow_partial_signals:
+            checks = [breakout_ok, ma50_ok, adx_ok, macd_ok,
+                      irg_ok, momentum_ok, vol_ok, rsi_ok, vol_buy_ok]
+            buy_cond = sum(bool(x) for x in checks) >= 5
+        else:
+            buy_cond = (
+                breakout_ok and ma50_ok and adx_ok and macd_ok and
+                irg_ok and momentum_ok and vol_ok and rsi_ok and vol_buy_ok and
+                (not atr_spike)
+            )
+
+        # -------- BUY --------
+        if (not in_position) and buy_cond:
+            in_position = True
+            entry_price = row['Close']
+            entry_index = i
+
+            atr = row['ATR'] if not pd.isna(row['ATR']) else 0.0
+            current_SL = entry_price - sl_mult * atr
+            current_TP = entry_price + tp_mult * atr
+
+            df.at[df.index[i], 'Buy'] = True
+            df.at[df.index[i], 'Entry_price'] = entry_price
+            df.at[df.index[i], 'Entry_index'] = i
+            df.at[df.index[i], 'Stop_Loss'] = current_SL
+            df.at[df.index[i], 'Take_Profit'] = current_TP
+            df.at[df.index[i], 'Position'] = 1
+            continue
+
+        # -------- SELL --------
+        if in_position:
+            price = row['Close']
+            exit_reason = None
+
+            # 1. SL / TP
+            if price <= current_SL:
+                exit_reason = 'SL'
+            elif price >= current_TP:
+                exit_reason = 'TP'
+
+            # 2. NEW: Volatility Spike Exit (>35%)
+            elif row['ATR'] > row['ATR50'] * 1.35:
+                exit_reason = 'ATR_spike_exit'
+
+            # 3. Trend Break (Close < MA20 + MA20 falling)
+            elif (not pd.isna(row['MA20'])) and price < row['MA20']:
+                prev_ma20 = df['MA20'].iloc[i - 1]
+                if prev_ma20 is not None and row['MA20'] < prev_ma20:
+                    exit_reason = 'Trend_break'
+
+            # 4. MACD loss (if enabled)
+            elif (not pd.isna(row['MACD'])) and (not pd.isna(row['MACD_signal'])) and (row['MACD'] < row['MACD_signal']):
+                exit_reason = 'MACD_loss'
+
+            # 5. ADX collapse
+            elif (not pd.isna(row['ADX'])) and (row['ADX'] < max(12, adx_threshold * 0.6)):
+                exit_reason = 'ADX_fall'
+
+            # 6. NEW: Time-Based Exit (if enabled)
+            if exit_reason is None and MAX_HOLDING_DAYS is not None:
+                if (i - entry_index) >= MAX_HOLDING_DAYS:
+                    exit_reason = 'TBE'
+
+            if exit_reason:
+                df.at[df.index[i], 'Sell'] = True
+                df.at[df.index[i], 'Exit_Reason'] = exit_reason
+                df.at[df.index[i], 'Position'] = 0
+
+                in_position = False
+                entry_price = None
+                entry_index = None
+                current_SL = None
+                current_TP = None
+            else:
+                df.at[df.index[i], 'Position'] = 1
+
+        else:
+            df.at[df.index[i], 'Position'] = 0
 
     return df
 
@@ -262,7 +464,7 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------------------------------------
 def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df = compute_indicators(df)
+    df = compute_indicators_ta(df)
 
     # Prepare result rows: we'll only keep rows where Buy or Sell happens
     df["Buy"] = False
@@ -523,19 +725,19 @@ class AlpacaClient:
 # Main runner with Buy + Sell
 # ---------------------------
 
-def run_daily(load_paramaters = True):
+def run_daily(load_paramaters=True):
     paramters = None
     symbols = fetch_symbols()
     logger.info(f"Loaded {len(symbols)} symbols")
     data_map = download_batch(symbols, period=DATA_PERIOD, interval=DATA_INTERVAL, auto_adjust=AUTO_ADJUST)
     logger.info(f"Downloaded data for {len(data_map)} symbols")
     if load_paramaters:
-        paramters = load_optuna_parameters()
+        paramters = load_optuna_parameters("optuna_best_parameters_mc.json")
     all_signals = []
     for sym, df in data_map.items():
         try:
             if paramters:
-                df = apply_strategy(df, **paramters)
+                df = apply_strategy_tuneable(df, **paramters)
                 signals = df[(df["Buy"] == True) | (df["Sell"] == True)].copy()
             else:
                 signals = generate_signals(df)
@@ -549,20 +751,22 @@ def run_daily(load_paramaters = True):
         logger.info("No signals across universe")
         return None
 
+    # Use only last signal of symbols
     signals_df = pd.concat(all_signals).sort_index()
-
     latest_per_symbol = signals_df.groupby("Symbol").tail(1).reset_index()
-
+    # Use only todays signals
+    latest_date = latest_per_symbol["Date"].max()
+    latest_per_symbol = latest_per_symbol[latest_per_symbol["Date"] == latest_date]
     # SELL side: find held positions that have Sell signal
     sell_candidates = latest_per_symbol[latest_per_symbol["Sell"] == True].copy()
-    logger.info("-----Selling Candidates-----")
-    display_cols = ["Date", "Symbol", "Close"]
-    logger.info(sell_candidates[display_cols].to_string(index=False))
+    #logger.info("-----Selling Candidates-----")
+    #display_cols = ["Date", "Symbol", "Close", "Exit_Reason"]
+    #logger.info(sell_candidates[display_cols].to_string(index=False))
     # BUY side: latest rows that are Buy
     candidate_buys = latest_per_symbol[latest_per_symbol["Buy"] == True].copy()
-    logger.info("-----Buying Candidates-----")
-    display_cols = ["Date", "Symbol", "Close"]
-    logger.info(candidate_buys[display_cols].to_string(index=False))
+    #logger.info("-----Buying Candidates-----")
+    #display_cols = ["Date", "Symbol", "Close"]
+    #logger.info(candidate_buys[display_cols].to_string(index=False))
 
     # Real trading: require Alpaca keys
     if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:

@@ -1,0 +1,1294 @@
+{
+  "fitness": 105.18910734821522,
+  "params": {
+    "adx_threshold": 25.0,
+    "irg_threshold": 1.5000000000000002,
+    "min_momentum_pct": 0.011,
+    "momentum_days": 9,
+    "volume_factor": 1.65,
+    "sl_mult": 2.4000000000000004,
+    "tp_mult": 1.7000000000000002,
+    "allow_partial_signals": 0,
+    "require_macd": 0,
+    "require_ma50": 1,
+    "require_rsi_gt": 30
+  },
+  "agg": {
+    "fitness": 105.18910734821522,
+    "trades": 182,
+    "total_return_mean": 0.02016324697995932,
+    "sharpe_mean": 175.168241401229,
+    "win_rate_mean": 0.5375502008032128,
+    "max_drawdown_mean": 0.034520087871697656,
+    "mc_score_mean": -0.1578859588755163,
+    "per_symbol": [
+      {
+        "trades": 1,
+        "total_return": 0.05041609346928899,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.05041609346928899
+        ],
+        "symbol": "ADBE",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.10152657417304156,
+        "sharpe": 6.950273398633713,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.08070337650579934,
+        "trade_returns": [
+          0.09401135520841208,
+          0.09526064834461034,
+          -0.08070337650579928
+        ],
+        "symbol": "AMD",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.03876786839694446,
+        "sharpe": -3.911682247158287,
+        "win_rate": 0.5,
+        "max_drawdown": 0.08658475218574364,
+        "trade_returns": [
+          0.05234955722845869,
+          -0.08658475218574369
+        ],
+        "symbol": "ABNB",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": 0.05273407076844583,
+        "sharpe": 24.634790814098626,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.009305090082636136,
+          0.043028595726445795
+        ],
+        "symbol": "GOOGL",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.02207131584661659,
+        "sharpe": 4.850646965225563,
+        "win_rate": 0.3333333333333333,
+        "max_drawdown": 0.009861648951711915,
+        "trade_returns": [
+          -0.010132960891878207,
+          0.04281784541144851,
+          -0.009861648951711932
+        ],
+        "symbol": "GOOG",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "AMZN"
+      },
+      {
+        "trades": 5,
+        "total_return": -0.045919599827507485,
+        "sharpe": -5.766200995593583,
+        "win_rate": 0.2,
+        "max_drawdown": 0.06759207880680795,
+        "trade_returns": [
+          -0.008088488795990223,
+          0.031587543773567095,
+          -0.044626210140113254,
+          -0.002972888972256449,
+          -0.021128545075543514
+        ],
+        "symbol": "AEP",
+        "mc_score": -2.2062677304402585
+      },
+      {
+        "trades": 1,
+        "total_return": 0.036768012628533686,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.036768012628533686
+        ],
+        "symbol": "AMGN",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.01604674948413065,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.01604674948413065
+        ],
+        "symbol": "ADI",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 4,
+        "total_return": 0.028595876801695175,
+        "sharpe": 7.05249922773362,
+        "win_rate": 0.75,
+        "max_drawdown": 0.008998405364182347,
+        "trade_returns": [
+          0.03422658390410649,
+          -0.008998405364182394,
+          0.0015621304880859554,
+          0.0020210237725979407
+        ],
+        "symbol": "AAPL",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.08587670989518559,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.08587670989518559
+        ],
+        "symbol": "AMAT",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 4,
+        "total_return": 0.5301000143046393,
+        "sharpe": 48.4043916797422,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.09390165535154149,
+          0.1763680331059958,
+          0.08427178720526607,
+          0.09663011422750767
+        ],
+        "symbol": "APP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.006514387057931614,
+        "sharpe": 0.47094084254404944,
+        "win_rate": 0.5,
+        "max_drawdown": 0.11229300783956447,
+        "trade_returns": [
+          0.11915938672984505,
+          -0.11229300783956453
+        ],
+        "symbol": "ARM",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.04342535626205968,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.04342535626205968
+        ],
+        "symbol": "ASML",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.055053187763091316,
+        "sharpe": 12.905918628216408,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.013513506180659563,
+        "trade_returns": [
+          0.03438631916051493,
+          0.03395215442827082,
+          -0.013513506180659607
+        ],
+        "symbol": "AZN",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": 0.08490194873586687,
+        "sharpe": 12.881485020271287,
+        "win_rate": 0.5,
+        "max_drawdown": 0.009974566695253182,
+        "trade_returns": [
+          0.09583240211760846,
+          -0.009974566695253095
+        ],
+        "symbol": "TEAM",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.03823645880197435,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.03823645880197435
+        ],
+        "symbol": "ADSK",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.01675133886117186,
+        "sharpe": -8.434640913693237,
+        "win_rate": 0.5,
+        "max_drawdown": 0.023887531161377647,
+        "trade_returns": [
+          0.007310829979148226,
+          -0.02388753116137765
+        ],
+        "symbol": "ADP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 4,
+        "total_return": 0.24320089124136302,
+        "sharpe": 7.233300263579444,
+        "win_rate": 0.75,
+        "max_drawdown": 0.11365207623847967,
+        "trade_returns": [
+          0.0553280754030685,
+          0.28678398437499997,
+          0.03286590631766462,
+          -0.11365207623847973
+        ],
+        "symbol": "AXON",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.008436135842027737,
+        "sharpe": -1.028902213718825,
+        "win_rate": 0.5,
+        "max_drawdown": 0.05073039013470757,
+        "trade_returns": [
+          0.04455452260678783,
+          -0.05073039013470759
+        ],
+        "symbol": "BKR",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "BIIB"
+      },
+      {
+        "trades": 2,
+        "total_return": 0.060780127560812636,
+        "sharpe": 27.336669066815883,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.047563407373785616,
+          0.012616630262182404
+        ],
+        "symbol": "BKNG",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": -0.06440440101870226,
+        "sharpe": -3.9288258116293933,
+        "win_rate": 0.3333333333333333,
+        "max_drawdown": 0.08171534681290332,
+        "trade_returns": [
+          -0.0646457772188499,
+          0.08926796840961582,
+          -0.08171534681290327
+        ],
+        "symbol": "AVGO",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": 0.03736436099888385,
+        "sharpe": 4.263693922672741,
+        "win_rate": 0.5,
+        "max_drawdown": 0.05913269146319621,
+        "trade_returns": [
+          0.10256180822367833,
+          -0.05913269146319622
+        ],
+        "symbol": "CDNS",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.06845210811805114,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.06845210811805114
+        ],
+        "symbol": "CDW",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": -0.0996325224301462,
+        "sharpe": -40.982553133470155,
+        "win_rate": 0.0,
+        "max_drawdown": 0.08428698002185307,
+        "trade_returns": [
+          -0.01675802579356067,
+          -0.03721231939905889,
+          -0.04889412439657692
+        ],
+        "symbol": "CHTR",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "CTAS"
+      },
+      {
+        "trades": 3,
+        "total_return": -0.06127325692145591,
+        "sharpe": -7.108830034719476,
+        "win_rate": 0.3333333333333333,
+        "max_drawdown": 0.07786612085598248,
+        "trade_returns": [
+          -0.01135158350269383,
+          0.02968251283384138,
+          -0.07786612085598243
+        ],
+        "symbol": "CSCO",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.010606400510603686,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.010606400510603686
+        ],
+        "symbol": "CCEP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "CTSH"
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "CMCSA"
+      },
+      {
+        "trades": 1,
+        "total_return": 0.0967515095941176,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.0967515095941176
+        ],
+        "symbol": "CEG",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.014832540571921071,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.014832540571921071
+        ],
+        "symbol": "CPRT",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.05043952019660036,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.05043952019660036
+        ],
+        "symbol": "CSGP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.0764138408596543,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.0764138408596543
+        ],
+        "symbol": "COST",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "CRWD"
+      },
+      {
+        "trades": 2,
+        "total_return": -0.02123522856457216,
+        "sharpe": -22.425773149118033,
+        "win_rate": 0.0,
+        "max_drawdown": 0.018181779382085463,
+        "trade_returns": [
+          -0.0031099944148164083,
+          -0.018181779382085428
+        ],
+        "symbol": "CSX",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.19062364009754962,
+        "sharpe": 9.69766085734826,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.06854740637767572,
+        "trade_returns": [
+          0.07136861668331695,
+          0.19309444714520185,
+          -0.06854740637767565
+        ],
+        "symbol": "DDOG",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "DXCM"
+      },
+      {
+        "trades": 1,
+        "total_return": 0.0350109366482263,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.0350109366482263
+        ],
+        "symbol": "FANG",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 4,
+        "total_return": 0.05144773749711584,
+        "sharpe": 3.4628531649520435,
+        "win_rate": 0.5,
+        "max_drawdown": 0.0869035338633754,
+        "trade_returns": [
+          0.09135885675839828,
+          -0.00663684305288359,
+          0.062173356220377674,
+          -0.08690353386337535
+        ],
+        "symbol": "DASH",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.04887001080781117,
+        "sharpe": -195.79900842324062,
+        "win_rate": 0.0,
+        "max_drawdown": 0.026744730788850545,
+        "trade_returns": [
+          -0.022733275348094217,
+          -0.026744730788850535
+        ],
+        "symbol": "EA",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.03376695140011776,
+        "sharpe": 5.613602265137975,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.03450525210753698,
+        "trade_returns": [
+          0.02875314211244051,
+          0.04078626837528754,
+          -0.034505252107536966
+        ],
+        "symbol": "EXC",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.01790795289514424,
+        "sharpe": -11.546790156340059,
+        "win_rate": 0.5,
+        "max_drawdown": 0.02117982390345685,
+        "trade_returns": [
+          0.0033426681306882866,
+          -0.02117982390345685
+        ],
+        "symbol": "FAST",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": 0.12816759727284666,
+        "sharpe": 156.01520389147268,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.06849708129020016,
+          0.055845277471974875
+        ],
+        "symbol": "FTNT",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.08928447694349007,
+        "sharpe": -42.589200397663355,
+        "win_rate": 0.0,
+        "max_drawdown": 0.028562438036826888,
+        "trade_returns": [
+          -0.06250740272380484,
+          -0.028562438036826898
+        ],
+        "symbol": "GEHC",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 6,
+        "total_return": -0.0249166844120432,
+        "sharpe": -1.1378453400762887,
+        "win_rate": 0.3333333333333333,
+        "max_drawdown": 0.040143314088282096,
+        "trade_returns": [
+          -0.05631813473944547,
+          -0.03032275805112372,
+          -0.0021847936227790132,
+          0.06772822405641676,
+          0.042009498342620466,
+          -0.04014331408828209
+        ],
+        "symbol": "GILD",
+        "mc_score": -2.185751072951942
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "GFS"
+      },
+      {
+        "trades": 3,
+        "total_return": -0.07817224828475977,
+        "sharpe": -20.659862091311762,
+        "win_rate": 0.0,
+        "max_drawdown": 0.06689102036408429,
+        "trade_returns": [
+          -0.012089936081289498,
+          -0.012161096394115223,
+          -0.055403693628778616
+        ],
+        "symbol": "HON",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.14764282875144707,
+        "sharpe": -134.02240962710374,
+        "win_rate": 0.0,
+        "max_drawdown": 0.08581098500465019,
+        "trade_returns": [
+          -0.06763573258109146,
+          -0.08581098500465023
+        ],
+        "symbol": "IDXX",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 4,
+        "total_return": 0.09110470711709073,
+        "sharpe": 6.520448763681483,
+        "win_rate": 0.75,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.04741252971703924,
+          0.026403987621579583,
+          0.11187445265894502,
+          0.0036620019187389996
+        ],
+        "symbol": "INTC",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.03213925348288016,
+        "sharpe": -3.91187993483845,
+        "win_rate": 0.5,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.07310828058455243,
+          0.04420044568691339
+        ],
+        "symbol": "INTU",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.17801661651716194,
+        "sharpe": 15.078206170549366,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.007913002236709194,
+        "trade_returns": [
+          0.04256545436991477,
+          -0.00791300223670921,
+          0.13893339762992496
+        ],
+        "symbol": "ISRG",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.11369373681573036,
+        "sharpe": -73.18742597794373,
+        "win_rate": 0.0,
+        "max_drawdown": 0.07115976586658951,
+        "trade_returns": [
+          -0.0457925587050223,
+          -0.07115976586658945
+        ],
+        "symbol": "KDP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "KLAC"
+      },
+      {
+        "trades": 1,
+        "total_return": -0.020448503219811398,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.020448503219811398
+        ],
+        "symbol": "KHC",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "LRCX"
+      },
+      {
+        "trades": 1,
+        "total_return": 0.03326593224448193,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.03326593224448193
+        ],
+        "symbol": "LIN",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": -0.11820416387090982,
+        "sharpe": -3.1198262764298117,
+        "win_rate": 0.3333333333333333,
+        "max_drawdown": 0.20793650200636374,
+        "trade_returns": [
+          -0.039356148208031905,
+          0.15889912976090947,
+          -0.2079365020063637
+        ],
+        "symbol": "LULU",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": 0.0751997626720482,
+        "sharpe": 14817.0349505276,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.03687884484345627,
+          0.03695795127769008
+        ],
+        "symbol": "MAR",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": -0.05749397504647469,
+        "sharpe": -0.7275992717769852,
+        "win_rate": 0.3333333333333333,
+        "max_drawdown": 0.1282602719534261,
+        "trade_returns": [
+          -0.11364431688247378,
+          0.21980178008230689,
+          -0.12826027195342615
+        ],
+        "symbol": "MRVL",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.0653972784193857,
+        "sharpe": 6.161608913904039,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.061119417173672606,
+        "trade_returns": [
+          0.06659672868104227,
+          -0.06111941717367253,
+          0.06390041493775933
+        ],
+        "symbol": "MELI",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.06102021447019523,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.06102021447019523
+        ],
+        "symbol": "META",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.1403616226116633,
+        "sharpe": -51.328429414108996,
+        "win_rate": 0.0,
+        "max_drawdown": 0.05012023913662321,
+        "trade_returns": [
+          -0.09500295426130223,
+          -0.050120239136623224
+        ],
+        "symbol": "MCHP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.08759064865247268,
+        "sharpe": 5.725409563400157,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.09064831583919492,
+        "trade_returns": [
+          0.06627225664999425,
+          -0.09064831583919486,
+          0.12167096956065859
+        ],
+        "symbol": "MU",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.023729951128651727,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.023729951128651727
+        ],
+        "symbol": "MSFT",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 5,
+        "total_return": -0.08894778645149792,
+        "sharpe": -0.5800076496652571,
+        "win_rate": 0.6,
+        "max_drawdown": 0.21214235908716986,
+        "trade_returns": [
+          0.12092014168117493,
+          -0.21214235908716983,
+          0.10960065597218782,
+          0.1317353192497701,
+          -0.1784967821300566
+        ],
+        "symbol": "MSTR",
+        "mc_score": -4.668206642577706
+      },
+      {
+        "trades": 2,
+        "total_return": -0.01746409189292175,
+        "sharpe": -23.831757166375024,
+        "win_rate": 0.0,
+        "max_drawdown": 0.002922682238049982,
+        "trade_returns": [
+          -0.014584034152448244,
+          -0.002922682238050034
+        ],
+        "symbol": "MDLZ",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.04867337187817822,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.04867337187817822
+        ],
+        "symbol": "MNST",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.05987481903990499,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.05987481903990499
+        ],
+        "symbol": "NFLX",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.02622245460901551,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.02622245460901551
+        ],
+        "symbol": "NVDA",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "NXPI"
+      },
+      {
+        "trades": 1,
+        "total_return": -0.027192828152605597,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.027192828152605597
+        ],
+        "symbol": "ORLY",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.05143416305727533,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.05143416305727533
+        ],
+        "symbol": "ODFL",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "ON"
+      },
+      {
+        "trades": 2,
+        "total_return": -0.004074358573476933,
+        "sharpe": -0.2063780713523082,
+        "win_rate": 0.5,
+        "max_drawdown": 0.052822021165028,
+        "trade_returns": [
+          0.05146621192725642,
+          -0.05282202116502799
+        ],
+        "symbol": "PCAR",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 4,
+        "total_return": 0.32775260993733824,
+        "sharpe": 28.630651637379135,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.08605510696782459,
+          0.07802434729800578,
+          0.009426832571495902,
+          0.12347105334433173
+        ],
+        "symbol": "PLTR",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "PANW"
+      },
+      {
+        "trades": 2,
+        "total_return": -0.03758514061446394,
+        "sharpe": -14.254605311310542,
+        "win_rate": 0.5,
+        "max_drawdown": 0.03963149529470009,
+        "trade_returns": [
+          0.0021308015310894657,
+          -0.039631495294700114
+        ],
+        "symbol": "PAYX",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": -0.08439182114119737,
+        "sharpe": -25.311710802294964,
+        "win_rate": 0.0,
+        "max_drawdown": 0.08131256510399391,
+        "trade_returns": [
+          -0.00335179944803754,
+          -0.03959797779497243,
+          -0.04343450590956399
+        ],
+        "symbol": "PYPL",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 5,
+        "total_return": -0.11932792026799321,
+        "sharpe": -2.890622400083947,
+        "win_rate": 0.4,
+        "max_drawdown": 0.27404126780726396,
+        "trade_returns": [
+          0.07784393387211042,
+          0.12550236676328996,
+          -0.1604348040263377,
+          -0.09266025969451286,
+          -0.04701168848581472
+        ],
+        "symbol": "PDD",
+        "mc_score": -4.044309140697947
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "PEP"
+      },
+      {
+        "trades": 2,
+        "total_return": -0.14784044130087015,
+        "sharpe": -96.18956098327422,
+        "win_rate": 0.0,
+        "max_drawdown": 0.08946075203198484,
+        "trade_returns": [
+          -0.06411551110967162,
+          -0.08946075203198489
+        ],
+        "symbol": "QCOM",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": 0.07221261862241302,
+        "sharpe": 17.68542375313099,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.0036842612578307232,
+          0.06827680776691825
+        ],
+        "symbol": "REGN",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.0033825313141229163,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.0033825313141229163
+        ],
+        "symbol": "ROP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": -0.0222149974189636,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.0222149974189636
+        ],
+        "symbol": "ROST",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.04746601410079121,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.04746601410079121
+        ],
+        "symbol": "SHOP",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "SOLS"
+      },
+      {
+        "trades": 1,
+        "total_return": 0.08136638918537442,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.08136638918537442
+        ],
+        "symbol": "SBUX",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.07945533525243675,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.07945533525243675
+        ],
+        "symbol": "SNPS",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.03298424667384814,
+        "sharpe": 4.459562673775378,
+        "win_rate": 0.6666666666666666,
+        "max_drawdown": 0.0461979886157261,
+        "trade_returns": [
+          0.030349803322987423,
+          -0.046197988615726104,
+          0.051116302631773136
+        ],
+        "symbol": "TMUS",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": 0.07771428909640687,
+        "sharpe": 16.841173334624862,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.07532111042813994,
+          0.0022255479270876233
+        ],
+        "symbol": "TTWO",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 3,
+        "total_return": 0.280424378783801,
+        "sharpe": 87.8503921276332,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.06542422054051067,
+          0.10297559704780213,
+          0.08959591143118995
+        ],
+        "symbol": "TSLA",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "TXN"
+      },
+      {
+        "trades": 1,
+        "total_return": -0.05032445960431087,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.05032445960431087
+        ],
+        "symbol": "TRI",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 2,
+        "total_return": -0.003592265555201979,
+        "sharpe": 0.644042192868017,
+        "win_rate": 0.5,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          -0.10850371527856928,
+          0.11768018725523843
+        ],
+        "symbol": "TTD",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "VRSK"
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "VRTX"
+      },
+      {
+        "trades": 4,
+        "total_return": -0.029938515662137233,
+        "sharpe": -0.4562805582059444,
+        "win_rate": 0.5,
+        "max_drawdown": 0.024444438793041024,
+        "trade_returns": [
+          -0.14891911054940954,
+          0.058028656624632635,
+          -0.024444438793041035,
+          0.10427943173582332
+        ],
+        "symbol": "WBD",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 0,
+        "total_return": 0.0,
+        "sharpe": 0.0,
+        "win_rate": 0.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [],
+        "symbol": "WDAY"
+      },
+      {
+        "trades": 3,
+        "total_return": -0.02975520995091807,
+        "sharpe": -4.103155012484322,
+        "win_rate": 0.3333333333333333,
+        "max_drawdown": 0.0667714458663212,
+        "trade_returns": [
+          0.039664705662339594,
+          -0.04674061078171554,
+          -0.02101299532022638
+        ],
+        "symbol": "XEL",
+        "mc_score": 0.0
+      },
+      {
+        "trades": 1,
+        "total_return": 0.06340217517155478,
+        "sharpe": 0.0,
+        "win_rate": 1.0,
+        "max_drawdown": 0.0,
+        "trade_returns": [
+          0.06340217517155478
+        ],
+        "symbol": "ZS",
+        "mc_score": 0.0
+      }
+    ]
+  },
+  "trial_number": 54
+}

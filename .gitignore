@@ -2,9 +2,12 @@ __pycache__/
 .env
 *.pyc
 alpaca_client.py
+next_quantforce_parameter_optimizer.py
+next_parameter_optimizer_one.py
 filter_nasq_100_before_alpacas.py
 filter_nasq_100_old.py
 next_quantforce.py
 nasdaq100_signals_new.csv
 NASDAQ_100.py
+exit_engine.py
 cache_prices
